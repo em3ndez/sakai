@@ -13,6 +13,8 @@
  ******************************************************************************/
 package org.sakaiproject.webapi.controllers;
 
+import org.apache.commons.lang3.StringUtils;
+
 import org.sakaiproject.authz.api.SecurityService;
 import org.sakaiproject.component.api.ServerConfigurationService;
 import org.sakaiproject.conversations.api.ConversationsService;
@@ -36,6 +38,8 @@ import org.sakaiproject.user.api.UserNotDefinedException;
 import org.sakaiproject.webapi.beans.ConversationsRestBean;
 import org.sakaiproject.webapi.beans.SimpleGroup;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.hateoas.EntityModel;
 import org.springframework.hateoas.Link;
 import org.springframework.http.HttpStatus;
@@ -49,8 +53,6 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import javax.annotation.Resource;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -68,28 +70,27 @@ import java.util.stream.Collectors;
 
 import lombok.extern.slf4j.Slf4j;
 
-/**
- */
 @Slf4j
 @RestController
 public class ConversationsController extends AbstractSakaiApiController {
 
-	@Resource
+	@Autowired
 	private ConversationsService conversationsService;
 
-	@Resource
+	@Autowired
 	private EntityManager entityManager;
 
-	@Resource
+	@Autowired
 	private SecurityService securityService;
 
-	@Resource(name = "org.sakaiproject.component.api.ServerConfigurationService")
+	@Autowired
+	@Qualifier("org.sakaiproject.component.api.ServerConfigurationService")
 	private ServerConfigurationService serverConfigurationService;
 
-	@Resource
+	@Autowired
 	private SiteService siteService;
 
-	@Resource
+	@Autowired
 	private UserDirectoryService userDirectoryService;
 
 	@GetMapping(value = "/sites/{siteId}/conversations", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -100,7 +101,7 @@ public class ConversationsController extends AbstractSakaiApiController {
         Site site;
         try {
             site = siteService.getSite(siteId);
-            String siteRef = "/site/" + siteId;
+            String siteRef = siteService.siteReference(siteId);
             ConversationsRestBean bean = new ConversationsRestBean();
             bean.userId = currentUserId;
             bean.siteId = siteId;
@@ -139,6 +140,8 @@ public class ConversationsController extends AbstractSakaiApiController {
 
             bean.blankTopic = conversationsService.getBlankTopic(siteId);
 
+            bean.searchEnabled = serverConfigurationService.getBoolean("search.enable", false);
+
             List<Link> links = new ArrayList<>();
             if (bean.canViewSiteStatistics) links.add(Link.of("/api/sites/" + siteId + "/conversations/stats", "stats"));
             return EntityModel.of(bean, links);
@@ -168,6 +171,7 @@ public class ConversationsController extends AbstractSakaiApiController {
 		checkSakaiSession();
 
         topicBean.siteId = siteId;
+
         return entityModelForTopicBean(conversationsService.saveTopic(topicBean, true));
     }
 
@@ -230,6 +234,22 @@ public class ConversationsController extends AbstractSakaiApiController {
 		checkSakaiSession();
 
         return conversationsService.saveTopicReactions(topicId, reactions);
+    }
+
+	@GetMapping(value = "/sites/{siteId}/topics/{topicId}/upvote")
+    public ResponseEntity upvoteTopic(@PathVariable String siteId, @PathVariable String topicId) throws ConversationsPermissionsException {
+
+		checkSakaiSession();
+        conversationsService.upvoteTopic(siteId, topicId);
+        return new ResponseEntity(HttpStatus.OK);
+    }
+
+	@GetMapping(value = "/sites/{siteId}/topics/{topicId}/unupvote")
+    public ResponseEntity unUpvoteTopic(@PathVariable String siteId, @PathVariable String topicId) throws ConversationsPermissionsException {
+
+		checkSakaiSession();
+        conversationsService.unUpvoteTopic(siteId, topicId);
+        return new ResponseEntity(HttpStatus.OK);
     }
 
 	@PostMapping(value = "/sites/{siteId}/topics/{topicId}/posts/markpostsviewed")
@@ -371,7 +391,7 @@ public class ConversationsController extends AbstractSakaiApiController {
     public CommentTransferBean createComment(@PathVariable String siteId, @PathVariable String topicId, @PathVariable String postId, @RequestBody CommentTransferBean commentBean) throws ConversationsPermissionsException  {
 
 		checkSakaiSession();
-        commentBean.post = postId;
+        commentBean.postId = postId;
         commentBean.siteId = siteId;
         return conversationsService.saveComment(commentBean);
     }
@@ -382,7 +402,7 @@ public class ConversationsController extends AbstractSakaiApiController {
 		checkSakaiSession();
 
         commentBean.id = commentId;
-        commentBean.post = postId;
+        commentBean.postId = postId;
         commentBean.siteId = siteId;
         return conversationsService.saveComment(commentBean);
     }
@@ -485,5 +505,27 @@ public class ConversationsController extends AbstractSakaiApiController {
         convStatus.setGuidelinesAgreed(true);
         conversationsService.saveConvStatus(convStatus);
         return new ResponseEntity(HttpStatus.OK);
+    }
+
+	@PostMapping(value = "/sites/{siteId}/conversations/cache/clear")
+    public ResponseEntity clearCacheForTopicsGradedByItem(@PathVariable String siteId, @RequestBody Map<String, String> body) {
+
+		String currentUserId = checkSakaiSession().getUserId();
+
+        String siteRef = siteService.siteReference(siteId);
+        if (!securityService.unlock(Permissions.GRADE.label, siteRef)) {
+            return new ResponseEntity(HttpStatus.FORBIDDEN);
+        }
+
+        String id = body.get("gradingItemId");
+        if (StringUtils.isBlank(id)) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        Long gradingItemId = Long.parseLong(id);
+
+        conversationsService.clearCacheForGradedTopic(gradingItemId);
+
+        return ResponseEntity.ok().build();
     }
 }

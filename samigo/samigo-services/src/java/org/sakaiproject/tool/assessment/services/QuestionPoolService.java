@@ -28,12 +28,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.sakaiproject.authz.api.AuthzGroupService;
 import org.sakaiproject.component.cover.ComponentManager;
+import org.sakaiproject.samigo.util.SamigoConstants;
+import org.sakaiproject.tags.api.TagService;
+import org.sakaiproject.tool.assessment.business.questionpool.QuestionPoolTag;
 import org.sakaiproject.tool.assessment.data.dao.questionpool.QuestionPoolData;
+import org.sakaiproject.tool.assessment.data.dao.questionpool.QuestionPoolAccessData;
 import org.sakaiproject.tool.assessment.data.dao.questionpool.QuestionPoolItemData;
 import org.sakaiproject.tool.assessment.data.ifc.assessment.AnswerIfc;
 import org.sakaiproject.tool.assessment.data.ifc.assessment.ItemDataIfc;
@@ -45,6 +50,7 @@ import org.sakaiproject.tool.assessment.data.model.Tree;
 import org.sakaiproject.tool.assessment.facade.AgentFacade;
 import org.sakaiproject.tool.assessment.facade.AssessmentFacade;
 import org.sakaiproject.tool.assessment.facade.ItemFacade;
+import org.sakaiproject.tool.assessment.facade.QuestionPoolAccessFacade;
 import org.sakaiproject.tool.assessment.facade.QuestionPoolFacade;
 import org.sakaiproject.tool.assessment.facade.QuestionPoolIteratorFacade;
 import org.sakaiproject.tool.assessment.facade.SectionFacade;
@@ -79,27 +85,6 @@ import lombok.extern.slf4j.Slf4j;
     return PersistenceService.getInstance().getQuestionPoolFacadeQueries().getAllPools();
   }
 
-  /**
-   * Get all pools from the back end.
-   */
-  public QuestionPoolIteratorFacade getAllPools(String agentId)
-  {
-    QuestionPoolIteratorFacade results = null;
-      results =
-        (QuestionPoolIteratorFacade) PersistenceService.getInstance().
-           getQuestionPoolFacadeQueries().getAllPools(agentId);
-    return results;
-  }
-
-  public QuestionPoolIteratorFacade getAllPoolsWithAccess(String agentId)
-  {
-	  QuestionPoolIteratorFacade results = null;
-	  results =
-		  (QuestionPoolIteratorFacade) PersistenceService.getInstance().
-		  getQuestionPoolFacadeQueries().getAllPoolsWithAccess(agentId);
-	  return results;
-  }
-  
   /**
    * Get basic info for pools(just id and  title)  for displaying in pulldown .
    */
@@ -491,7 +476,19 @@ import lombok.extern.slf4j.Slf4j;
   {
     try
     {
-      return PersistenceService.getInstance().getQuestionPoolFacadeQueries().savePool(pool);
+      QuestionPoolFacade updatedPool = PersistenceService.getInstance().getQuestionPoolFacadeQueries().savePool(pool);
+
+      // If saving was successful update the associated tags
+      if (updatedPool != null && pool.getTags() != null) {
+        String poolReference = SamigoConstants.REFERENCE_PREFIX_QUESTIONPOOL + "/" + pool.getQuestionPoolId();
+        Set<String> tagIds = pool.getTags().stream()
+            .map(QuestionPoolTag::getTagId)
+            .collect(Collectors.toSet());
+
+        TagService tagService = ComponentManager.get(TagService.class);
+        tagService.updateTagAssociations(pool.getOwnerId(), poolReference, tagIds, false);
+      }
+      return updatedPool;
     }
     catch(Exception e)
     {
@@ -499,7 +496,7 @@ import lombok.extern.slf4j.Slf4j;
       return pool;
     }
   }
-
+  
   public Map getQuestionPoolItemMap(){
     return PersistenceService.getInstance().getQuestionPoolFacadeQueries().
         getQuestionPoolItemMap();
@@ -561,57 +558,6 @@ import lombok.extern.slf4j.Slf4j;
 	  }
   }
 
-  public void removeQuestionPoolAccess(Tree tree, String user, Long questionPoolId, Long accessTypeId) {
-	  try {
-		  PersistenceService.getInstance().
-		  getQuestionPoolFacadeQueries().removeQuestionPoolAccess(tree, user, questionPoolId, accessTypeId);
-	  } catch (Exception e) {
-        log.error(e.getMessage(), e);
-	  }
-  }
-
-  public List<AgentFacade> getAgentsWithAccess(Long questionPoolId) {
-
-	  List<AgentFacade> agents = null;
-	  try {
-		  agents = PersistenceService.getInstance().
-		  getQuestionPoolFacadeQueries().getAgentsWithAccess(questionPoolId);
-	  } catch (Exception e) {
-        log.error(e.getMessage(), e);
-	  }
-
-	  return agents;
-  }
-
-  public List<AgentFacade> getAgentsWithoutAccess(Long questionPoolId, String realmId) {
-
-	  List<AgentFacade> agents = new ArrayList<AgentFacade>();
-
-	  try {
-		  // Get agents with access
-		  List<AgentFacade> agentsWithAccess = getAgentsWithAccess(questionPoolId);
-
-		  List<String> azGroups = new ArrayList<String>();
-		  azGroups.add("/site/" + realmId);
-
-		  // Get all agents
-		  Set<String> users = ComponentManager.get(AuthzGroupService.class).getUsersIsAllowed("assessment.questionpool.create", azGroups);
-
-		  // Create the AgentFacade
-		  for (String userId : users) {
-			  AgentFacade agent = new AgentFacade(userId);
-			  agents.add(agent);
-		  }
-
-		  agents.removeAll(agentsWithAccess);
-
-	  } catch (Exception e) {
-        log.error(e.getMessage(), e);
-	  }
-
-	  return agents;
-  }
-  
   // SAM-2049
   public void transferPoolsOwnership(String ownerId, List<Long> poolIds) {
 	  try {
@@ -637,6 +583,9 @@ import lombok.extern.slf4j.Slf4j;
 		AssessmentService assessmentService = new AssessmentService();
 
 		List<ItemDataIfc> items = this.getAllItems(questionPool.getQuestionPoolId());
+
+		//Image Map question is not exported.
+		items.removeIf(item -> ((ItemFacade) item).getData().getTypeId() == TypeIfc.IMAGEMAP_QUESTION);
 
 		// only exports questions items on currentItemIdsString
 		if (StringUtils.isNotBlank(currentItemIdsString)) {
@@ -763,15 +712,94 @@ import lombok.extern.slf4j.Slf4j;
 	 * @return
 	 */
 	public boolean canExportPool(String questionPoolId, String agentIdString) {
-		List<AgentFacade> poolList = this.getAgentsWithAccess(Long.parseLong(questionPoolId));
-		boolean agentIdStringInPoolList = false;
-		for (AgentFacade agentFacade : poolList) {
-			if (agentIdString.equals(agentFacade.getAgentInstanceString())) {
-				agentIdStringInPoolList = true;
-				break;
-			}
-		}
-		return agentIdStringInPoolList;
+		return this.getAgentsWithAccess(Long.parseLong(questionPoolId)).stream().anyMatch(pool -> agentIdString.equals(pool.getAgentId()));
 	}
 
+	public Set<String> getAllItemHashes(Long poolId) {
+		return PersistenceService.getInstance().getQuestionPoolFacadeQueries().getAllItemHashes(poolId);
+	}
+
+	public Long getItemCount(Long poolId) {
+		return PersistenceService.getInstance().getQuestionPoolFacadeQueries().getItemCount(poolId);
+	}
+
+	public Long getSubPoolCount(Long poolId) {
+		return PersistenceService.getInstance().getQuestionPoolFacadeQueries().getSubPoolCount(poolId);
+	}
+
+    public QuestionPoolIteratorFacade getOwnPools(String agentId) {
+        return this.getAllPoolsWithAccess(agentId, QuestionPoolAccessFacade.ADMIN);
+    }
+
+    /**
+     * Get a particular pooldataaccess from the backend.
+     */
+    public QuestionPoolAccessData getQuestionPoolAccessData(Long poolId, String agentId) {
+        try {
+            return PersistenceService.getInstance().getQuestionPoolFacadeQueries().getQuestionPoolAccessData(poolId, agentId);
+        } catch(Exception e) {
+            log.error(e.getMessage());
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Get all pools from the back end.
+     */
+    public QuestionPoolIteratorFacade getAllPoolsWithAccess(String agentId, Long access) {
+        return (QuestionPoolIteratorFacade) PersistenceService.getInstance().getQuestionPoolFacadeQueries().getAllPoolsWithAccess(agentId, access);
+    }
+
+    public List<QuestionPoolAccessFacade> getAgentsWithoutAccess(Long questionPoolId, String realmId) {
+
+        List<QuestionPoolAccessFacade> agents = new ArrayList<>();
+
+        try {
+            // Get agents with access
+            List<QuestionPoolAccessFacade> agentsWithAccess = this.getAgentsWithAccess(questionPoolId);
+
+            List<String> azGroups = new ArrayList<String>();
+            azGroups.add("/site/" + realmId);
+
+            // Get the site's users
+            Set<String> users = ComponentManager.get(AuthzGroupService.class).getUsersIsAllowed("assessment.questionpool.create", azGroups);
+
+            // Delete the site's users who have already got access
+            for (QuestionPoolAccessFacade questionPoolAccessFacade : agentsWithAccess) {
+                users.remove(questionPoolAccessFacade.getAgentId());
+            }
+
+            // Create the QuestionPoolAccessFacade with users
+            for (String userId : users) {
+                QuestionPoolAccessData qpd = new QuestionPoolAccessData(questionPoolId, userId, QuestionPoolAccessFacade.ACCESS_DENIED); 
+                agents.add(new QuestionPoolAccessFacade(qpd.getQuestionPoolId(), qpd.getAccessTypeId(), qpd.getAgentId()));
+            }
+
+        } catch (Exception e) {
+            log.error(e.getMessage());
+        }
+
+        return agents;
+    }
+
+    public List<QuestionPoolAccessFacade> getAgentsWithAccess(Long questionPoolId) {
+
+        try {
+            return PersistenceService.getInstance().getQuestionPoolFacadeQueries().getAgentsWithAccess(questionPoolId);
+        } catch (Exception e) {
+            log.error(e.getMessage());
+        }
+
+        return new ArrayList<>();
+  }
+
+    public void removeQuestionPoolAccess(Tree tree, String user, Long questionPoolId) {
+
+        try {
+            PersistenceService.getInstance().getQuestionPoolFacadeQueries().removeQuestionPoolAccess(tree, user, questionPoolId);
+        } catch (Exception e) {
+            log.error(e.getMessage());
+        }
+
+    }
 }

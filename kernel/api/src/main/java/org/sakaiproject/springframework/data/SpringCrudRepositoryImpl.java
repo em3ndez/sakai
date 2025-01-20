@@ -38,6 +38,8 @@ import java.util.Optional;
 @Transactional(readOnly = true)
 public abstract class SpringCrudRepositoryImpl<T extends PersistableEntity<ID>, ID extends Serializable> implements SpringCrudRepository<T, ID> {
 
+    public static final int BATCH_SIZE = 100;
+
     @Getter
     private final Class<T> domainClass;
 
@@ -93,6 +95,13 @@ public abstract class SpringCrudRepositoryImpl<T extends PersistableEntity<ID>, 
 
     @Override
     public T getById(ID id) {
+
+        Assert.notNull(id, "The id cannot be null");
+        return sessionFactory.getCurrentSession().load(domainClass, id);
+    }
+
+    @Override
+    public T getReferenceById(ID id) {
 
         Assert.notNull(id, "The id cannot be null");
         return sessionFactory.getCurrentSession().load(domainClass, id);

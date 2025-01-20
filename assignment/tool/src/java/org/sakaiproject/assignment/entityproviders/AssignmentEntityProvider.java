@@ -34,6 +34,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.fileupload.FileItem;
 
 import org.sakaiproject.assignment.api.AssignmentConstants;
+import org.sakaiproject.assignment.api.AssignmentPeerAssessmentService;
 import org.sakaiproject.assignment.api.AssignmentReferenceReckoner;
 import org.sakaiproject.assignment.api.AssignmentService;
 import org.sakaiproject.assignment.api.ContentReviewResult;
@@ -46,6 +47,7 @@ import org.sakaiproject.authz.api.SecurityService;
 import org.sakaiproject.component.api.ServerConfigurationService;
 import org.sakaiproject.content.api.ContentHostingService;
 import org.sakaiproject.content.api.ContentResource;
+import org.sakaiproject.content.api.ContentTypeImageService;
 import org.sakaiproject.entity.api.Entity;
 import org.sakaiproject.entity.api.EntityManager;
 import org.sakaiproject.entity.api.Reference;
@@ -74,6 +76,7 @@ import org.sakaiproject.site.api.ToolConfiguration;
 import org.sakaiproject.time.api.UserTimeService;
 import org.sakaiproject.timesheet.api.TimeSheetEntry;
 import org.sakaiproject.tool.api.SessionManager;
+import org.sakaiproject.tool.api.ToolManager;
 import org.sakaiproject.user.api.User;
 import org.sakaiproject.user.api.UserDirectoryService;
 import org.sakaiproject.lti.api.LTIService;
@@ -91,14 +94,17 @@ public class AssignmentEntityProvider extends AbstractEntityProvider implements 
 
     private static ResourceLoader rb = new ResourceLoader("assignment");
 
+    private AssignmentPeerAssessmentService assignmentPeerAssessmentService;
     private AssignmentService assignmentService;
     private AssignmentToolUtils assignmentToolUtils;
     private ContentHostingService contentHostingService;
+    private ContentTypeImageService contentTypeImageService;
     private EntityBroker entityBroker;
     private EntityManager entityManager;
     private SecurityService securityService;
     private SessionManager sessionManager;
     private SiteService siteService;
+    private ToolManager toolManager;
     private AssignmentSupplementItemService assignmentSupplementItemService;
     private GradingService gradingService;
     private ServerConfigurationService serverConfigurationService;
@@ -662,7 +668,6 @@ public class AssignmentEntityProvider extends AbstractEntityProvider implements 
         Map<String, Object> submission = new HashMap<>();
 
         submission.put("id", as.getId());
-        submission.put("assignmentCloseTime", simpleAssignment.getCloseTime());
         submission.put("hydrated", hydrate);
 
         if (as.getUserSubmission()) submission.put("submitted", as.getUserSubmission());
@@ -670,14 +675,39 @@ public class AssignmentEntityProvider extends AbstractEntityProvider implements 
         if (as.getGraded()) submission.put("graded", as.getGraded());
 
         if (hydrate) {
+            Set<AssignmentSubmissionSubmitter> submitters = as.getSubmitters();
+
+            // Add the SubmissionReview Launch information if this tool has requested it
+            // https://www.imsglobal.org/spec/lti-ags/v2p0#submission-review-message
+            // LTI doesn't support group projects and expects that there should only be one submitter
+            if (!assignment.getIsGroup() && submitters.size() == 1) {
+                String submitterId = submitters.toArray(new AssignmentSubmissionSubmitter[]{})[0].getSubmitter();
+                Integer contentKey = assignment.getContentId();
+                if (StringUtils.isNotBlank(submitterId) && contentKey != null) {
+                    String siteId = assignment.getContext();
+                    Map<String, Object> content = ltiService.getContent(contentKey.longValue(), siteId);
+                    if ( content != null ) {
+                        String contentItem = StringUtils.trimToEmpty((String) content.get(LTIService.LTI_CONTENTITEM));
+                        // Instead of parsing, the JSON we just look for a simple existance of the submission review entry
+                        // Delegate the complex understanding of the launch to SakaiLTIUtil
+                        // TODO: Eventually, Sakai's LTIService will implement a submissionReview checkbox and we should check for that here
+                        boolean submissionReviewAvailable = contentItem.indexOf("\"submissionReview\"") > 0;
+
+                        String ltiSubmissionLaunch = "/access/lti/site/" + siteId + "/content:" + contentKey + "?for_user=" + submitterId;
+
+                        if ( submissionReviewAvailable ) {
+                            ltiSubmissionLaunch = ltiSubmissionLaunch + "&message_type=content_review";
+                        }
+                        log.debug("ltiSubmissionLaunch={}", ltiSubmissionLaunch);
+                        submission.put("ltiSubmissionLaunch", ltiSubmissionLaunch);
+                    }
+                }
+            }
+
             if (assignment.getTypeOfGrade() == Assignment.GradeType.PASS_FAIL_GRADE_TYPE) {
                 submission.put("grade", StringUtils.isBlank(as.getGrade()) ? AssignmentConstants.UNGRADED_GRADE_STRING : as.getGrade());
             } else if (StringUtils.isNotBlank(as.getGrade())) {
                 submission.put("grade", assignmentService.getGradeDisplay(as.getGrade(), assignment.getTypeOfGrade(), assignment.getScaleFactor()));
-            }
-
-            if (StringUtils.isNotBlank(as.getGrade())) {
-                submission.put("grade", as.getGrade());
             }
 
             boolean draft = assignmentToolUtils.isDraftSubmission(as);
@@ -687,8 +717,8 @@ public class AssignmentEntityProvider extends AbstractEntityProvider implements 
 
             Instant due = simpleAssignment.getDueTime();
             Instant close = simpleAssignment.getCloseTime();
-            boolean visible = Instant.now().isAfter(Optional.ofNullable(due).orElse(Instant.now()))
-                && Instant.now().isAfter(Optional.ofNullable(close).orElse(Instant.now()));
+            boolean visible = as.getSubmitted() || (Instant.now().isAfter(Optional.ofNullable(due).orElse(Instant.now()))
+                && Instant.now().isAfter(Optional.ofNullable(close).orElse(Instant.now())));
 
             submission.put("visible", visible);
 
@@ -716,15 +746,20 @@ public class AssignmentEntityProvider extends AbstractEntityProvider implements 
                             ContentResource cr = contentHostingService.getResource(id);
                             Map<String, String> attachment = new HashMap<>();
                             attachment.put("name", cr.getProperties().getPropertyFormatted(cr.getProperties().getNamePropDisplayName()));
+                            attachment.put("creationDate", cr.getProperties().getPropertyFormatted(cr.getProperties().getNamePropCreationDate()));
+                            attachment.put("contentLength", cr.getProperties().getPropertyFormatted(cr.getProperties().getNamePropContentLength()));
                             attachment.put("ref", cr.getReference());
                             attachment.put("url", cr.getUrl());
                             attachment.put("type", cr.getContentType());
+                            attachment.put("iconClass", contentTypeImageService.getContentTypeImageClass(cr.getContentType()));
                             return attachment;
                         } catch (Exception e) {
                             log.info("There was an attachment on submission {} that was invalid", as.getId());
                             return null;
                         }
-                    }).collect(Collectors.toList());
+                    })
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
 
                 if (!submittedAttachments.isEmpty()) {
                     submission.put("submittedAttachments", submittedAttachments);
@@ -763,6 +798,60 @@ public class AssignmentEntityProvider extends AbstractEntityProvider implements 
                     submission.put("previewableAttachments", previewableAttachments);
                 }
             }
+
+            //peer review
+            if (assignment.getAllowPeerAssessment()
+                    && assignment.getPeerAssessmentStudentReview()
+                    && assignmentService.isPeerAssessmentClosed(assignment)) {
+                List<PeerAssessmentItem> reviews = assignmentPeerAssessmentService.getPeerAssessmentItems(as.getId(), assignment.getScaleFactor());
+                if (reviews != null) {
+                    List<SimplePeerAssessmentItem> completedReviews = new ArrayList<>();
+                    for (PeerAssessmentItem review : reviews) {
+                        if (!review.getRemoved() && (review.getScore() != null || (StringUtils.isNotBlank(review.getComment())))) {
+                            //only show peer reviews that have either a score or a comment saved
+                            if (assignment.getPeerAssessmentAnonEval()) {
+                                //annonymous eval
+                                review.setAssessorDisplayName(rb.getFormattedMessage("gen.reviewer.countReview", completedReviews.size() + 1));
+                            } else {
+                                //need to set the assessor's display name
+                                try {
+                                    if (assignment.getIsGroup()) {
+                                        String siteId = toolManager.getCurrentPlacement().getContext();
+                                        Site site = siteService.getSite(siteId);
+                                        review.setAssessorDisplayName(site.getGroup(review.getId().getAssessorUserId()).getTitle());
+                                    } else {
+                                        review.setAssessorDisplayName(userDirectoryService.getUser(review.getId().getAssessorUserId()).getDisplayName());
+                                    }
+                                } catch (IdUnusedException | UserNotDefinedException e) {
+                                    //reviewer doesn't exist or one of userId/groupId/siteId is wrong
+                                    log.warn("Either no site, or user: {}", e.toString());
+                                    //set a default one:
+                                    review.setAssessorDisplayName(rb.getFormattedMessage("gen.reviewer.countReview", completedReviews.size() + 1));
+                                }
+                            }
+                            // get attachments for peer review item
+                            List<PeerAssessmentAttachment> attachments = assignmentPeerAssessmentService.getPeerAssessmentAttachments(review.getId().getSubmissionId(), review.getId().getAssessorUserId());
+                            if (attachments != null && !attachments.isEmpty()) {
+                                List<Reference> attachmentRefList = new ArrayList<>();
+                                for (PeerAssessmentAttachment attachment : attachments) {
+                                    try {
+                                        Reference ref = entityManager.newReference(contentHostingService.getReference(attachment.getResourceId()));
+                                        attachmentRefList.add(ref);
+                                    } catch (Exception e) {
+                                        log.warn("Exception while creating reference: {}", e.toString());
+                                    }
+                                }
+                                if (!attachmentRefList.isEmpty()) review.setAttachmentRefList(attachmentRefList);
+                            }
+                            completedReviews.add(new SimplePeerAssessmentItem(review));
+                        }
+                    }
+                    if (!completedReviews.isEmpty()) {
+                        submission.put("peerReviews", completedReviews);
+                    }
+                }
+            }
+            submission.putAll(getOriginalityProperties(as));
         }
 
         List<Map<String, Object>> submitters
@@ -840,9 +929,6 @@ public class AssignmentEntityProvider extends AbstractEntityProvider implements 
 
             if (!feedbackAttachments.isEmpty()) submission.put("feedbackAttachments", feedbackAttachments);
 
-            String grade = assignmentService.getGradeForSubmitter(as, as.getSubmitters().isEmpty() ? null : as.getSubmitters().stream().findAny().get().getSubmitter());
-            if (StringUtils.isNotBlank(grade)) submission.put("grade", grade);
-
             String status = assignmentService.getSubmissionStatus(as.getId(), true);
             if (StringUtils.isNotBlank(status)) submission.put("status", status);
 
@@ -877,6 +963,8 @@ public class AssignmentEntityProvider extends AbstractEntityProvider implements 
             = AssignmentReferenceReckoner.reckoner().assignment(assignment).reckon().getReference();
 
         Map<String, Object> data  = new HashMap<>();
+
+        data.put("assignmentCloseTime", assignment.getCloseDate());
 
         data.put("groups", assignmentService.getGroupsAllowGradeAssignment(assignmentReference)
             .stream().map(SimpleGroup::new).collect(Collectors.toList()));
@@ -996,8 +1084,9 @@ public class AssignmentEntityProvider extends AbstractEntityProvider implements 
 
         Integer contentKey = assignment.getContentId();
         if (contentKey != null) {
-            // Fall back launch for SimpleAssignments without any user-submission
+            // Default assignment-wide launch to tool if there is not a SubmissionReview launch in a submission
             simpleAssignment.ltiGradableLaunch = "/access/lti/site/" + siteId + "/content:" + contentKey;
+
             Map<String, Object> content = ltiService.getContent(contentKey.longValue(), site.getId());
             String contentItem = StringUtils.trimToEmpty((String) content.get(LTIService.LTI_CONTENTITEM));
 
@@ -1010,7 +1099,7 @@ public class AssignmentEntityProvider extends AbstractEntityProvider implements 
                             ltiSubmissionLaunch = "/access/lti/site/" + siteId + "/content:" + contentKey + "?for_user=" + submitter.get("id");
 
                             // Instead of parsing, the JSON we just look for a simple existance of the submission review entry
-                            // Delegate the complex understanding of the launch to SakaiBLTIUtil
+                            // Delegate the complex understanding of the launch to SakaiLTIUtil
                             if ( contentItem.indexOf("\"submissionReview\"") > 0 ) {
                                 ltiSubmissionLaunch = ltiSubmissionLaunch + "&message_type=content_review";
                             }
@@ -1033,22 +1122,78 @@ public class AssignmentEntityProvider extends AbstractEntityProvider implements 
         return new ActionReturn(data);
     }
 
-    private Map<String, String> addOriginalityProperties(AssignmentSubmission as) {
+    private Map<String, String> getOriginalityProperties(AssignmentSubmission as) {
 
-        Map<String, String> existing = as.getProperties();
-        existing.put("originalityServiceName", this.assignmentService.getContentReviewServiceName());
+        Map<String, String> props = new HashMap<>();
+
+        String originalityServiceName = this.assignmentService.getContentReviewServiceName();
+        props.put("originalityServiceName", originalityServiceName);
+
         int reviewCounting = 1;
-        for (ContentReviewResult c: this.assignmentService.getSortedContentReviewResults(as)) {   //real part; will work on a Turnitin-enabled server
-            existing.put("originalityLink" + Integer.toString(reviewCounting), c.getReviewReport());
-            existing.put("originalityIcon" + Integer.toString(reviewCounting), c.getReviewIconCssClass());
-            existing.put("originalityScore" + Integer.toString(reviewCounting), Integer.toString(c.getReviewScore()));
-            existing.put("originalityName" + Integer.toString(reviewCounting), c.getContentResource().getProperties().getPropertyFormatted(ResourceProperties.PROP_DISPLAY_NAME));
-            existing.put("originalityInline" + Integer.toString(reviewCounting), Boolean.valueOf(c.isInline()).toString());
-            existing.put("originalityStatus" + Integer.toString(reviewCounting), Boolean.valueOf(c.isPending()).toString());
-            existing.put("originalityError" + Integer.toString(reviewCounting), c.getReviewError());
+        for (ContentReviewResult c : this.assignmentService.getSortedContentReviewResults(as)) {
+            //real part; will work on a Turnitin-enabled server
+            props.put("originalityLink" + Integer.toString(reviewCounting), c.getReviewReport());
+            props.put("originalityIcon" + Integer.toString(reviewCounting), c.getReviewIconCssClass());
+            props.put("originalityScore" + Integer.toString(reviewCounting), Integer.toString(c.getReviewScore()));
+            props.put("originalityName" + Integer.toString(reviewCounting), c.getContentResource().getProperties().getPropertyFormatted(ResourceProperties.PROP_DISPLAY_NAME));
+            props.put("originalityInline" + Integer.toString(reviewCounting), Boolean.valueOf(c.isInline()).toString());
+            props.put("originalityStatus" + Integer.toString(reviewCounting), Boolean.valueOf(c.isPending()).toString());
+            props.put("originalityError" + Integer.toString(reviewCounting), c.getReviewError());
             reviewCounting++;
         }
-        return existing;
+        return props;
+    }
+
+    @EntityCustomAction(action = "getGrade", viewKey = EntityView.VIEW_LIST)
+    public ActionReturn getGrade(Map<String, Object> params) {
+
+        String userId = getCheckedCurrentUser();
+
+        String courseId = (String) params.get("courseId");
+        String gradableId = (String) params.get("gradableId");
+        String studentId = (String) params.get("studentId");
+        String submissionId = (String) params.get("submissionId");
+        if (StringUtils.isBlank(courseId) || StringUtils.isBlank(gradableId)
+                || StringUtils.isBlank(studentId) || StringUtils.isBlank(submissionId)) {
+            throw new EntityException("You need to supply the courseId, gradableId, studentId and grade", "", HttpServletResponse.SC_BAD_REQUEST);
+        }
+
+        AssignmentSubmission submission = null;
+        try {
+            submission = assignmentService.getSubmission(submissionId);
+        } catch (IdUnusedException iue) {
+            throw new EntityException("submissionId not found.", "", HttpServletResponse.SC_BAD_REQUEST);
+        } catch (PermissionException pe) {
+            throw new EntityException("You don't have permissions read submission " + submissionId, "", HttpServletResponse.SC_FORBIDDEN);
+        }
+
+        Site site = null;
+        try {
+            site = siteService.getSite(courseId);
+        } catch (IdUnusedException iue) {
+            throw new EntityException("The courseId (site id) you supplied is invalid", "", HttpServletResponse.SC_BAD_REQUEST);
+        }
+
+        Assignment assignment = submission.getAssignment();
+
+        Map<String, Object> retval = new HashMap<>();
+        retval.put("id", submission.getId());
+
+        // Return the default representation of a grade if we don't return a formatted version
+        // See similar code in submissionToMap which does this in a different order
+        if (StringUtils.isNotBlank(submission.getGrade())) {
+            retval.put("grade", submission.getGrade());
+        }
+
+        if (assignment.getTypeOfGrade() == Assignment.GradeType.PASS_FAIL_GRADE_TYPE) {
+            retval.put("grade", StringUtils.isBlank(submission.getGrade()) ? AssignmentConstants.UNGRADED_GRADE_STRING : submission.getGrade());
+        } else if (StringUtils.isNotBlank(submission.getGrade())) {
+            retval.put("grade", assignmentService.getGradeDisplay(submission.getGrade(), assignment.getTypeOfGrade(), assignment.getScaleFactor()));
+        }
+
+        if (StringUtils.isNotBlank(submission.getFeedbackComment())) retval.put("feedbackComment", submission.getFeedbackComment());
+
+        return new ActionReturn(retval);
     }
 
     @EntityCustomAction(action = "setGrade", viewKey = EntityView.VIEW_NEW)
@@ -1069,7 +1214,6 @@ public class AssignmentEntityProvider extends AbstractEntityProvider implements 
         AssignmentSubmission submission = null;
         try {
             submission = assignmentService.getSubmission(submissionId);
-            submission.setProperties(addOriginalityProperties(submission));
         } catch (IdUnusedException iue) {
             throw new EntityException("submissionId not found.", "", HttpServletResponse.SC_BAD_REQUEST);
         } catch (PermissionException pe) {
@@ -1101,10 +1245,16 @@ public class AssignmentEntityProvider extends AbstractEntityProvider implements 
             throw new EntityException("You don't have permission to set grades", "", HttpServletResponse.SC_FORBIDDEN);
         }
 
-        if (assignment.getTypeOfGrade() == Assignment.GradeType.SCORE_GRADE_TYPE) {
-            grade = assignmentToolUtils.scalePointGrade(grade, assignment.getScaleFactor(), alerts);
-        } else if (assignment.getTypeOfGrade() == Assignment.GradeType.PASS_FAIL_GRADE_TYPE && grade.equals(AssignmentConstants.UNGRADED_GRADE_STRING)) {
-            grade = null;
+        switch (assignment.getTypeOfGrade()) {
+            case SCORE_GRADE_TYPE:
+                grade = assignmentToolUtils.scalePointGrade(grade, assignment.getScaleFactor(), alerts);
+                break;
+            case UNGRADED_GRADE_TYPE:
+                grade = ASSN_GRADE_TYPE_NOGRADE_PROP;
+                break;
+            case PASS_FAIL_GRADE_TYPE:
+                if (AssignmentConstants.UNGRADED_GRADE_STRING.equals(grade)) grade = null;
+            default:
         }
 
         Map<String, Object> options = new HashMap<>();
@@ -1127,7 +1277,6 @@ public class AssignmentEntityProvider extends AbstractEntityProvider implements 
         options.put(GRADE_SUBMISSION_FEEDBACK_TEXT, feedbackText);
         options.put(GRADE_SUBMISSION_FEEDBACK_COMMENT, feedbackComment);
         options.put(GRADE_SUBMISSION_PRIVATE_NOTES, privateNotes);
-        options.put(WITH_GRADES, true);
         options.put(ALLOW_RESUBMIT_NUMBER, resubmitNumber);
 
         if (StringUtils.isNotBlank(resubmitDate)) {
@@ -1170,7 +1319,8 @@ public class AssignmentEntityProvider extends AbstractEntityProvider implements 
         if (submission != null) {
             boolean anonymousGrading = assignmentService.assignmentUsesAnonymousGrading(assignment);
             try {
-                return new ActionReturn(submissionToMap(activeSubmitters, assignment, new SimpleAssignment(assignment),  submission, true));
+                return new ActionReturn(Map.of("assignmentCloseTime", assignment.getCloseDate(),
+                                                "submission", submissionToMap(activeSubmitters, assignment, new SimpleAssignment(assignment),  submission, true)));
             } catch (Exception e) {
                 throw new EntityException("Failed to set grade on " + submissionId, "", HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             }
@@ -1966,15 +2116,14 @@ public class AssignmentEntityProvider extends AbstractEntityProvider implements 
                 }
 
                 this.submittedAttachments = as.getAttachments().stream().map(ref -> {
-
-                        String id = entityManager.newReference(ref).getId();
-                        try {
-                            return new DecoratedAttachment(contentHostingService.getResource(id));
-                        } catch (Exception e) {
-                            log.info("There was an attachment on submission {} that was invalid", as.getId());
-                            return null;
-                        }
-                    }).collect(Collectors.toList());
+                    String id = entityManager.newReference(ref).getId();
+                    try {
+                        return new DecoratedAttachment(contentHostingService.getResource(id));
+                    } catch (Exception e) {
+                        log.warn("Failed to load attachment [{}] for submission [{}], {}", id, as.getId(), e.toString());
+                        return null;
+                    }
+                }).filter(Objects::nonNull).collect(Collectors.toList());
 
                 SecurityAdvisor securityAdvisor = (String userId, String function, String reference) -> {
 
@@ -2066,6 +2215,43 @@ public class AssignmentEntityProvider extends AbstractEntityProvider implements 
             this.reference = g.getReference();
             this.title = g.getTitle();
             this.users = g.getUsers();
+        }
+    }
+
+    @Getter
+    public class SimplePeerAssessmentItem {
+
+        private String assessorUserId;
+        private String submissionId;
+        private String assignmentId;
+        private Integer score;
+        private String scoreDisplay;
+        private String comment;
+        private Boolean removed;
+        private Boolean submitted;
+        private List<String> attachmentUrlList;
+        private String assessorDisplayName;
+        private Integer scaledFactor;
+        private boolean draft;
+
+        public SimplePeerAssessmentItem(PeerAssessmentItem item) {
+            this.assessorUserId = item.getId().getAssessorUserId();
+            this.submissionId = item.getId().getSubmissionId();
+            this.assignmentId = item.getAssignmentId();
+            this.score = item.getScore();
+            this.scoreDisplay = item.getScoreDisplay();
+            this.comment = item.getComment();
+            this.removed = item.getRemoved();
+            this.submitted = item.getSubmitted();
+            this.assessorDisplayName = item.getAssessorDisplayName();
+            this.scaledFactor = item.getScaledFactor();
+            this.draft = item.isDraft();
+
+            this.attachmentUrlList = Optional.ofNullable(item.getAttachmentRefList())
+                    .orElseGet(Collections::emptyList)
+                    .stream()
+                    .map(Reference::getUrl)
+                    .collect(Collectors.toList());
         }
     }
 }

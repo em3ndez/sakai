@@ -36,6 +36,12 @@ public interface ItemDataIfc extends Comparable<ItemDataIfc>, java.io.Serializab
   public static final Integer ACTIVE_STATUS = 1;
   public static final Integer INACTIVE_STATUS = 0;
 
+  public static final int ITEM_NOT_CANCELED = 0;
+  public static final int ITEM_TOTAL_SCORE_TO_CANCEL = 10;
+  public static final int ITEM_TOTAL_SCORE_CANCELLED = 11;
+  public static final int ITEM_DISTRIBUTED_TO_CANCEL = 20;
+  public static final int ITEM_DISTRIBUTED_CANCELLED = 21;
+
   Long getItemId();
 
   void setItemId(Long itemId);
@@ -104,6 +110,10 @@ public interface ItemDataIfc extends Comparable<ItemDataIfc>, java.io.Serializab
 
   void setStatus(Integer status);
 
+  Integer getCancellation();
+
+  void setCancellation(Integer cancellation);
+
   String getCreatedBy();
 
   void setCreatedBy(String createdBy);
@@ -123,6 +133,10 @@ public interface ItemDataIfc extends Comparable<ItemDataIfc>, java.io.Serializab
   Boolean getIsExtraCredit();
 
   void setIsExtraCredit(Boolean isExtraCredit);
+
+  Boolean getIsFixed();
+
+  void setIsFixed(Boolean isFixed);
 
   Set<ItemTextIfc> getItemTextSet();
 
@@ -229,4 +243,9 @@ public interface ItemDataIfc extends Comparable<ItemDataIfc>, java.io.Serializab
   public Long getOriginalItemId();
   public void setOriginalItemId(Long originalItemId);
   public void updateFeedbackByType(String typeId, String text, String value);
+
+  Set<ItemHistoricalIfc> getItemHistoricalSet();
+  void setItemHistoricalSet(Set<ItemHistoricalIfc> itemMetaDataSet);
+  void addItemHistorical(String modifiedBy, Date modifiedDate);
+
 }

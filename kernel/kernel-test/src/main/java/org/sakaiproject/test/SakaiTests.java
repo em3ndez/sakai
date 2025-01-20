@@ -15,8 +15,10 @@
  */
 package org.sakaiproject.test;
 
+import org.mockito.Mockito;
 import org.sakaiproject.authz.api.AuthzGroup;
 import org.sakaiproject.authz.api.AuthzGroupService;
+import org.sakaiproject.entity.api.EntityManager;
 import org.sakaiproject.site.api.Site;
 import org.sakaiproject.site.api.SiteService;
 import org.sakaiproject.user.api.User;
@@ -67,6 +69,7 @@ public abstract class SakaiTests extends AbstractTransactionalJUnit4SpringContex
 
     @Before
     public void setup() {
+        Mockito.reset(siteService);
 
         instructorUser = mock(User.class);
         when(instructorUser.getId()).thenReturn(instructor);
@@ -90,6 +93,7 @@ public abstract class SakaiTests extends AbstractTransactionalJUnit4SpringContex
 
         try {
           when(siteService.getSite(site1Id)).thenReturn(site1);
+          when(siteService.getSiteVisit(site1Id)).thenReturn(site1);
         } catch (Exception e) {
         }
 

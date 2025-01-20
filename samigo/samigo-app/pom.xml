@@ -5,7 +5,7 @@
 	<parent>
 		<groupId>org.sakaiproject.samigo</groupId>
 		<artifactId>samigo</artifactId>
-		<version>24-SNAPSHOT</version>
+		<version>25-SNAPSHOT</version>
 	</parent>
     
 	<name>Sakai Samigo Tool (samigo-app)</name>
@@ -156,6 +156,12 @@
             <version>1.1.01</version>
         </dependency>-->
         <dependency>
+            <groupId>org.scilab.forge</groupId>
+            <artifactId>jlatexmath</artifactId>
+            <version>1.0.7</version>
+        </dependency>
+
+        <dependency>
 			<groupId>OKI</groupId>
 			<artifactId>OkiOSID</artifactId>
 		</dependency>
@@ -172,10 +178,6 @@
                 <exclusion>
                     <groupId>commons-logging</groupId>
                     <artifactId>commons-logging</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>xml-apis</groupId>
-                    <artifactId>xmlParserAPIs</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
@@ -197,24 +199,6 @@
             <groupId>org.springframework</groupId>
             <artifactId>spring-webmvc</artifactId>
 	    <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.sakaiproject.rsf</groupId>
-            <artifactId>sakai-rsf-web-templates</artifactId>
-            <version>${project.version}</version>
-            <type>war</type>
-        </dependency>
-        <dependency>
-            <groupId>org.sakaiproject.rsf</groupId>
-            <artifactId>sakai-rsf-web-evolvers</artifactId>
-            <version>${project.version}</version>
-            <type>jar</type>
-        </dependency>
-        <dependency>
-            <groupId>org.sakaiproject.rsf</groupId>
-            <artifactId>sakai-rsf-core</artifactId>
-            <version>${project.version}</version>
-            <type>jar</type>
         </dependency>
         <dependency>
             <groupId>org.springframework</groupId>
@@ -245,6 +229,11 @@
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.jgrapht</groupId>
+            <artifactId>jgrapht-core</artifactId>
+            <version>1.5.1</version>
+        </dependency>
         <!--JSF 2.3 dependencies-->
         <dependency>
             <groupId>org.jboss.weld.servlet</groupId>
@@ -255,6 +244,11 @@
             <groupId>jakarta.servlet.jsp.jstl</groupId>
             <artifactId>jakarta.servlet.jsp.jstl-api</artifactId>
             <version>${sakai.jakarta.jstl-api.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.json</groupId>
+            <artifactId>json</artifactId>
+            <version>${sakai.org.json.version}</version>
         </dependency>
     </dependencies>
     

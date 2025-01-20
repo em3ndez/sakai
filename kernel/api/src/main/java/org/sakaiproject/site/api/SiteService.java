@@ -35,6 +35,7 @@ import org.sakaiproject.exception.IdUnusedException;
 import org.sakaiproject.exception.IdUsedException;
 import org.sakaiproject.exception.InUseException;
 import org.sakaiproject.exception.PermissionException;
+import org.sakaiproject.exception.SakaiException;
 import org.sakaiproject.javax.PagingPosition;
 import org.w3c.dom.Element;
 
@@ -220,6 +221,9 @@ public interface SiteService extends EntityProducer
 	
 	/** An event for unpublishing a site. */
 	static final String EVENT_SITE_UNPUBLISH = "site.unpublish";
+
+	/** The site id for the admin workspace */
+	public static final String ADMIN_SITE_ID = "!admin";
 	
 	/**
 	 * <p>
@@ -436,6 +440,16 @@ public interface SiteService extends EntityProducer
 	 * @return True if a site with this id is defined, false if not.
 	 */
 	boolean siteExists(String id);
+
+	/**
+	 * Access a site object. This method does not perform any security/permission checks.
+	 * If you need permission checks to occur, use {@link getSiteVisit(String id)} instead
+	 *
+	 * @param id
+	 *        The site id string.
+	 * @return An Optional containing the site or empty
+	 */
+	Optional<Site> getOptionalSite(String id);
 
 	/**
 	 * Access a site object. This method does not perform any security/permission checks. 
@@ -688,6 +702,16 @@ public interface SiteService extends EntityProducer
 	 * @return The the internal reference which can be used to access the site from within the system.
 	 */
 	String siteReference(String id);
+
+	/**
+	 * Parse out the site id from the supplied reference
+	 *
+	 * @param ref
+	 *        The site reference.
+	 * @return The site id
+	 */
+	String idFromSiteReference(String ref);
+
 
 	/**
 	 * Access the internal reference which can be used to access the site page from within the system.
@@ -1288,6 +1312,14 @@ public interface SiteService extends EntityProducer
 	 * @return A log of status messages from the archive.
 	 */
 	String merge(String toSiteId, Element e, String creatorId);
+
+	/**
+	 * Activates viewing a site with a different role
+	 * @param site the site to activate
+	 * @param role the new role the user will have
+	 * @throws SakaiException
+	 */
+	void activateRoleViewOnSite(String siteReference, String role) throws SakaiException;
 
 	/**
 	 * Access a Group object, given a reference string or id.

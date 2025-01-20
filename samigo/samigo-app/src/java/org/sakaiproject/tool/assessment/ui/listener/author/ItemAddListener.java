@@ -96,6 +96,7 @@ import org.sakaiproject.tool.assessment.ui.bean.author.AssessmentSettingsBean;
 import org.sakaiproject.tool.assessment.ui.bean.author.AuthorBean;
 import org.sakaiproject.tool.assessment.ui.bean.author.CalculatedQuestionAnswerIfc;
 import org.sakaiproject.tool.assessment.ui.bean.author.CalculatedQuestionFormulaBean;
+import org.sakaiproject.tool.assessment.ui.bean.author.CalculatedQuestionGlobalVariableBean;
 import org.sakaiproject.tool.assessment.ui.bean.author.CalculatedQuestionVariableBean;
 import org.sakaiproject.tool.assessment.ui.bean.author.ImageMapItemBean;
 import org.sakaiproject.tool.assessment.ui.bean.author.ItemAuthorBean;
@@ -314,7 +315,7 @@ public class ItemAddListener implements ActionListener {
             return;
         }
         
-        // if no errors remove disabled variables and formulas before saving
+        // if no errors remove disabled variables, global variables and formulas before saving
         CalculatedQuestionBean question = item.getCalculatedQuestion();
         Iterator<CalculatedQuestionVariableBean> variableIter = question.getVariables().values().iterator();        
         while (variableIter.hasNext()) {
@@ -328,6 +329,13 @@ public class ItemAddListener implements ActionListener {
             CalculatedQuestionFormulaBean formula = formulaIter.next();
             if (!formula.getActive()) {
                 formulaIter.remove();
+            }
+        }
+        Iterator<CalculatedQuestionGlobalVariableBean> formulaGlobalVarIter = question.getGlobalvariables().values().iterator();
+        while (formulaGlobalVarIter.hasNext()) {
+            CalculatedQuestionGlobalVariableBean globalvariable = formulaGlobalVarIter.next();
+            if (!globalvariable.isActive()) {
+                formulaGlobalVarIter.remove();
             }
         }
     }
@@ -344,6 +352,13 @@ public class ItemAddListener implements ActionListener {
    		return;
    	 }
     }
+    
+    if(item.isTimedQuestion() && ((item.getTimeLimit().intValue()) == 0)){
+        err = ContextUtil.getLocalizedString("org.sakaiproject.tool.assessment.bundle.AssessmentSettingsMessages", "question_timeSelect_error");
+        context.addMessage(null, new FacesMessage(err));
+        return;
+    }
+    
 	try {
 		saveItem(itemauthorbean, assessmentBean);
 
@@ -352,10 +367,10 @@ public class ItemAddListener implements ActionListener {
 		if (!associationParams.isEmpty()) {
 			if (assessmentBean.getAssessment() instanceof AssessmentFacade) {
 				String associationId = assessmentBean.getAssessmentId().toString() + "." + itemauthorbean.getItemId();
-				rubricsService.saveRubricAssociation(RubricsConstants.RBCS_TOOL_SAMIGO, associationId, associationParams);
+				rubricsService.saveRubricAssociation(RubricsConstants.RBCS_TOOL_SAMIGO, associationId, associationParams, AgentFacade.getCurrentSiteId());
 			} else if (assessmentBean.getAssessment() instanceof PublishedAssessmentFacade) {
 				String pubAssociationId = RubricsConstants.RBCS_PUBLISHED_ASSESSMENT_ENTITY_PREFIX + assessmentBean.getAssessmentId().toString() + "." + itemauthorbean.getItemId();
-				rubricsService.saveRubricAssociation(RubricsConstants.RBCS_TOOL_SAMIGO, pubAssociationId, associationParams);
+				rubricsService.saveRubricAssociation(RubricsConstants.RBCS_TOOL_SAMIGO, pubAssociationId, associationParams, AgentFacade.getCurrentSiteId());
 			}
 		}
 	}
@@ -753,6 +768,12 @@ public class ItemAddListener implements ActionListener {
         	delegate.deleteItemContent(oldId, AgentFacade.getAgentString());
         }
     	item = delegate.getItem(oldId,AgentFacade.getAgentString());
+
+        if (isPendingOrPool) {
+            item.addItemHistorical(item.getLastModifiedBy(), item.getLastModifiedDate());
+        }
+        item.setLastModifiedBy(AgentFacade.getAgentString());
+        item.setLastModifiedDate(new Date());
       }
       else{
      	if (isPendingOrPool) {
@@ -761,6 +782,11 @@ public class ItemAddListener implements ActionListener {
      	else {
      		item = new PublishedItemFacade();
      	}
+
+    	item.setCreatedBy(AgentFacade.getAgentString());
+    	item.setCreatedDate(new Date());
+    	item.setLastModifiedBy(AgentFacade.getAgentString());
+    	item.setLastModifiedDate(new Date());
       }
 
       item.setIsExtraCredit(bean.isExtraCredit());
@@ -780,11 +806,6 @@ public class ItemAddListener implements ActionListener {
 	    item.setAnswerOptionsSimpleOrRich(Integer.valueOf(bean.getAnswerOptionsSimpleOrRich()));
 	    item.setAnswerOptionsRichCount(Integer.valueOf(bean.getAnswerOptionsRichCount()));
   	  }
-      
-      item.setCreatedBy(AgentFacade.getAgentString());
-      item.setCreatedDate(new Date());
-      item.setLastModifiedBy(AgentFacade.getAgentString());
-      item.setLastModifiedDate(new Date());
 
       if (bean.getInstruction() != null) {
         // for matching and matrix Survey
@@ -941,7 +962,7 @@ public class ItemAddListener implements ActionListener {
         QuestionPoolBean qpoolbean = (QuestionPoolBean) ContextUtil.lookupBean("questionpool");
         QuestionPoolDataBean contextCurrentPool = qpoolbean.getCurrentPool();
        
-        qpoolbean.buildTree();
+        qpoolbean.buildReadOnlyPoolTree();
 
         /*
             // Reset question pool bean
@@ -1040,6 +1061,7 @@ public class ItemAddListener implements ActionListener {
               section.getData().setLastModifiedDate(item.getLastModifiedDate());
               DateFormat df = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZZ");
               section.addSectionMetaData(SectionDataIfc.QUESTIONS_RANDOM_DRAW_DATE, df.format(item.getLastModifiedDate()));
+              section.addSectionMetaData(SectionDataIfc.QUESTIONS_FIXED_DRAW_DATE, df.format(item.getLastModifiedDate()));
               assessdelegate.saveOrUpdateSection(section);
           }
 
@@ -1629,18 +1651,28 @@ public class ItemAddListener implements ActionListener {
 	      List<CalculatedQuestionAnswerIfc> list = new ArrayList<CalculatedQuestionAnswerIfc>();
 	      list.addAll(calcBean.getFormulas().values());
 	      list.addAll(calcBean.getVariables().values());
+	      list.addAll(calcBean.getGlobalvariables().values());
+
+	      // add "|0,0" to global variables
+	      for (CalculatedQuestionAnswerIfc varFormula : list) {
+	          if (varFormula instanceof CalculatedQuestionGlobalVariableBean) {
+	              CalculatedQuestionGlobalVariableBean globalVariable = (CalculatedQuestionGlobalVariableBean) varFormula;
+	              globalVariable.setText(globalVariable.getText() + "|0,0");
+	          }
+	      }
 	      
-	      // loop through all variables and formulas to create ItemText objects
+	      // loop through all variables, global variables and formulas to create ItemText objects
 	      for (CalculatedQuestionAnswerIfc varFormula : list) {
 	          ItemText choiceText = new ItemText();
 	          choiceText.setItem(item.getData());
 	          choiceText.setText(varFormula.getName());
 	          Long sequence = varFormula.getSequence();
 	          choiceText.setSequence(sequence);
+	          choiceText.setAddedButNotExtracted(varFormula.isAddedButNotExtracted());
 	          
 	          Set<AnswerIfc> answerSet = new HashSet<AnswerIfc>();
 	          
-	          // loop through all variables and formulas to create all answers for the ItemText object
+	          // loop through all variables, global variables and formulas to create all answers for the ItemText object
 	          for (CalculatedQuestionAnswerIfc curVarFormula : list) {
 	              String match = curVarFormula.getMatch();
 	              Long curSequence = curVarFormula.getSequence();
@@ -2549,6 +2581,8 @@ public class ItemAddListener implements ActionListener {
 		 * set.add(new ItemMetaData(item.getData(),
 		 * ItemMetaDataIfc.NUMATTEMPTS, bean.getNumAttempts())); }
 		 */
+		
+		set.add(new ItemMetaData(item.getData(), ItemMetaDataIfc.TIMED, bean.isTimedQuestion() ? Integer.toString(bean.getTimeLimit()) : "false"));
 		return set;
   }
 
@@ -2623,6 +2657,9 @@ public class ItemAddListener implements ActionListener {
 		  }
 		  else if (itemMetaData.getLabel().equals(ItemMetaDataIfc.MX_SURVEY_QUESTION_COMMENTFIELD)){
 			  itemMetaData.setEntry(bean.getCommentField());
+		  }
+		  else if (itemMetaData.getLabel().equals(ItemMetaDataIfc.TIMED)){
+			  itemMetaData.setEntry(bean.isTimedQuestion() ? Integer.toString(bean.getTimeLimit()) : "false");
 		  }
 	  }
 	  return itemMetaDataSet;

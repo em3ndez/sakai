@@ -44,6 +44,7 @@ import org.sakaiproject.tool.assessment.data.ifc.assessment.ItemAttachmentIfc;
 import org.sakaiproject.tool.assessment.data.ifc.assessment.ItemDataIfc;
 import org.sakaiproject.tool.assessment.data.ifc.assessment.ItemMetaDataIfc;
 import org.sakaiproject.tool.assessment.data.ifc.assessment.ItemFeedbackIfc;
+import org.sakaiproject.tool.assessment.data.ifc.assessment.ItemHistoricalIfc;
 import org.sakaiproject.tool.assessment.data.ifc.assessment.ItemTagIfc;
 import org.sakaiproject.tool.assessment.data.ifc.assessment.ItemTextIfc;
 import org.sakaiproject.tool.assessment.data.ifc.assessment.SectionDataIfc;
@@ -83,17 +84,21 @@ public class ItemData
   private Set<ItemMetaDataIfc> itemMetaDataSet;
   private Set<ItemFeedbackIfc> itemFeedbackSet;
   @Getter @Setter private Set<ItemAttachmentIfc> itemAttachmentSet;
+  @Getter @Setter private Set<ItemHistoricalIfc> itemHistoricalSet;
   private Set<ItemTagIfc> itemTagSet;
   private Double minScore;
   private String hash;
   private Long originalItemId;
   @Getter private Boolean isExtraCredit = Boolean.FALSE;
+  @Getter @Setter private Boolean isFixed = Boolean.FALSE;
 
   // for EMI question
   private String themeText;
   private String leadInText;
   private Integer answerOptionsRichCount;
   private Integer answerOptionsSimpleOrRich = ItemDataIfc.ANSWER_OPTIONS_SIMPLE;
+
+  @Getter @Setter private Integer cancellation = ItemDataIfc.ITEM_NOT_CANCELED;
 
   private String tagListToJsonString;
   
@@ -140,6 +145,7 @@ public ItemData() {}
                   Date createdDate, String lastModifiedBy,
                   Date lastModifiedDate,
                   Set<ItemTextIfc> itemTextSet, Set<ItemMetaDataIfc> itemMetaDataSet, Set<ItemFeedbackIfc> itemFeedbackSet,
+                  Set<ItemHistoricalIfc> itemHistoricalSet,
                   Integer triesAllowed, Boolean partialCreditFlag, String hash) {
     this.section = section;
     this.sequence = sequence;
@@ -161,6 +167,7 @@ public ItemData() {}
     this.itemTextSet = itemTextSet;
     this.itemMetaDataSet = itemMetaDataSet;
     this.itemFeedbackSet = itemFeedbackSet;
+    this.itemHistoricalSet = itemHistoricalSet;
     this.triesAllowed = triesAllowed;
     this.partialCreditFlag=partialCreditFlag;
     this.minScore = minScore;
@@ -174,6 +181,7 @@ public ItemData() {}
                   Date createdDate, String lastModifiedBy,
                   Date lastModifiedDate,
                   Set<ItemTextIfc> itemTextSet, Set<ItemMetaDataIfc> itemMetaDataSet, Set<ItemFeedbackIfc> itemFeedbackSet,
+                  Set<ItemHistoricalIfc> itemHistoricalSet,
                   Integer triesAllowed, Boolean partialCreditFlag, String hash, Long originalItemId) {
     this.section = section;
     this.sequence = sequence;
@@ -195,6 +203,7 @@ public ItemData() {}
     this.itemTextSet = itemTextSet;
     this.itemMetaDataSet = itemMetaDataSet;
     this.itemFeedbackSet = itemFeedbackSet;
+    this.itemHistoricalSet = itemHistoricalSet;
     this.triesAllowed = triesAllowed;
     this.partialCreditFlag=partialCreditFlag;
     this.minScore = minScore;
@@ -446,6 +455,13 @@ public ItemData() {}
       setItemMetaDataSet(new HashSet<ItemMetaDataIfc>());
     }
     this.itemMetaDataSet.add(new ItemMetaData(this, label, entry));
+  }
+
+  public void addItemHistorical(String modifiedBy, Date modifiedDate) {
+    if (this.itemHistoricalSet == null) {
+      setItemHistoricalSet(new HashSet());
+    }
+    this.itemHistoricalSet.add(new ItemHistorical(this, modifiedBy, modifiedDate));
   }
 
   public String getCorrectItemFeedback() {
@@ -1163,4 +1179,18 @@ public ItemData() {}
   public String getTagListToJsonString() {
     return convertTagListToJsonString(itemTagSet);
   }
+
+  public List<ItemHistoricalIfc> getItemHistorical() {
+
+    List<ItemHistoricalIfc> historicalList = new ArrayList<>();
+    Set<ItemHistoricalIfc> historicalSet = this.getItemHistoricalSet();
+    if (historicalSet != null) {
+      historicalList = new ArrayList<>(historicalSet);
+    }
+    ItemHistorical ih = new ItemHistorical(this, this.lastModifiedBy, this.lastModifiedDate);
+    historicalList.add(ih);
+    Collections.sort(historicalList);
+    return historicalList;
+  }
+
 }

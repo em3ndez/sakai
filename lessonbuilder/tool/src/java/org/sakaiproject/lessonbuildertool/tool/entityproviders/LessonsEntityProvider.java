@@ -486,6 +486,7 @@ public class LessonsEntityProvider extends AbstractEntityProvider implements Ent
 		private String siteTitle;
 	}
 
+	@EqualsAndHashCode(callSuper = true)
 	@NoArgsConstructor
 	@AllArgsConstructor
 	@Data
@@ -555,6 +556,7 @@ public class LessonsEntityProvider extends AbstractEntityProvider implements Ent
 	}
 	
 	//(based on LessonBase) for most cases
+	@EqualsAndHashCode(callSuper = true)
 	@NoArgsConstructor
 	@AllArgsConstructor
 	@Data
@@ -575,20 +577,19 @@ public class LessonsEntityProvider extends AbstractEntityProvider implements Ent
 		}
 	}
 	
+	@EqualsAndHashCode(callSuper = true)
 	@NoArgsConstructor
 	@AllArgsConstructor
 	@Data
 	public class DecoratedLessonPage extends DecoratedLesson {
 		private String contentsURL;
-		private List<LessonBase> contentsList;
+		@Setter
+        private List<LessonBase> contentsList;
 		private boolean hidden;
 		private Date releaseDate;
 		private Double gradebookPoints;
-		
-		public void setContentsList(List<LessonBase> list) {
-		    contentsList = list;
-		}
-		public DecoratedLessonPage(SimplePageItem item, SimplePage simplePage) {
+
+        public DecoratedLessonPage(SimplePageItem item, SimplePage simplePage) {
 		    super(item);
 		    String baseURL = developerHelperService.getEntityURL(REFERENCE_ROOT, EntityView.VIEW_LIST, null);   //   /direct/lessons
 		    baseURL = baseURL + "/lesson/";
@@ -604,6 +605,7 @@ public class LessonsEntityProvider extends AbstractEntityProvider implements Ent
 	}
 	
 	//(based on LessonBase) for most cases
+	@EqualsAndHashCode(callSuper = true)
 	@NoArgsConstructor
 	@AllArgsConstructor
 	@Data
@@ -637,9 +639,7 @@ public class LessonsEntityProvider extends AbstractEntityProvider implements Ent
 	@EqualsAndHashCode(callSuper = false)
 	public class DecoratedResourceFolder extends DecoratedLesson {
 
-
 		private String dataDirectory;
-
 
 		public DecoratedResourceFolder(SimplePageItem item) {
 			super(item);
@@ -649,9 +649,27 @@ public class LessonsEntityProvider extends AbstractEntityProvider implements Ent
 			}
 		}
 	}
+
+	@Data
+	@EqualsAndHashCode(callSuper = false)
+	public class DecoratedBreak extends DecoratedLesson {
+
+
+		private String format;
+
+
+		public DecoratedBreak(SimplePageItem item) {
+			super(item);
+
+			if (item != null) {
+				format = item.getFormat();
+			}
+		}
+	}
         
 	// For properties related to grading a DecoratedLesson
-        @NoArgsConstructor
+        @EqualsAndHashCode(callSuper = true)
+		@NoArgsConstructor
         @AllArgsConstructor
         @Data
         public class GradedDecoratedLesson extends DecoratedLesson{                
@@ -667,7 +685,8 @@ public class LessonsEntityProvider extends AbstractEntityProvider implements Ent
             }
         }
         
-        @NoArgsConstructor
+        @EqualsAndHashCode(callSuper = true)
+		@NoArgsConstructor
         @AllArgsConstructor
         @Data
         public class DecoratedStudentContent extends DecoratedLesson{                
@@ -684,7 +703,8 @@ public class LessonsEntityProvider extends AbstractEntityProvider implements Ent
             }
         }
         
-        @NoArgsConstructor
+        @EqualsAndHashCode(callSuper = true)
+		@NoArgsConstructor
         @AllArgsConstructor
         @Data
         public class DecoratedComments extends DecoratedLesson {
@@ -698,6 +718,7 @@ public class LessonsEntityProvider extends AbstractEntityProvider implements Ent
         }
 
 	//for question items (base)
+	@EqualsAndHashCode(callSuper = true)
 	@NoArgsConstructor
 	@Data
 	public class DecoratedQuiz extends LessonBase {
@@ -724,6 +745,7 @@ public class LessonsEntityProvider extends AbstractEntityProvider implements Ent
 	}
 	
 	//for multiple choice questions
+	@EqualsAndHashCode(callSuper = true)
 	@NoArgsConstructor
 	@Data
 	public class DecoratedMultipleChoiceQuestion extends DecoratedQuiz {
@@ -756,6 +778,7 @@ public class LessonsEntityProvider extends AbstractEntityProvider implements Ent
 	}
 	
 	//for shortanswer questions
+	@EqualsAndHashCode(callSuper = true)
 	@NoArgsConstructor
 	@Data
 	public class DecoratedShortAnswerQuestion extends DecoratedQuiz {
@@ -1007,6 +1030,9 @@ public class LessonsEntityProvider extends AbstractEntityProvider implements Ent
 			LessonBase lesson = null;
 			//check type
 			switch (item.getType()) {
+				case SimplePageItem.BREAK:
+					lesson = new DecoratedBreak(item);
+					break;
 				case SimplePageItem.QUESTION:
 					if ("multipleChoice".equals(item.getAttribute("questionType"))) {
 						lesson = new DecoratedMultipleChoiceQuestion(item,
@@ -1044,7 +1070,12 @@ public class LessonsEntityProvider extends AbstractEntityProvider implements Ent
 					lesson = new DecoratedLessonPage(item, simplePage);
 					break;
 				case SimplePageItem.RESOURCE:
-					lesson = new DecoratedResource(item);
+					if (StringUtils.startsWith(item.getSakaiId(), SimplePageBean.PREFIX_URL)) {
+						// links native to lessons are not resources but are a type 1
+						lesson = new DecoratedLesson(item);
+					} else {
+						lesson = new DecoratedResource(item);
+					}
 					break;
 				case SimplePageItem.RESOURCE_FOLDER:
 					lesson = new DecoratedResourceFolder(item);

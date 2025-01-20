@@ -8,7 +8,7 @@
 </jsp:useBean>
 
 <f:view>
-  <sakai:view toolCssHref="/messageforums-tool/css/msgcntr-qtip.css" title="#{msgs.pvt_detmsgreply}">
+  <sakai:view title="#{msgs.pvt_detmsgreply}">
     <h:form id="pvtMsgDetail">
     		<script>
        			// Define i18n for js text
@@ -18,7 +18,6 @@
        			};
        		</script>
            	<script>includeLatestJQuery("msgcntr");</script>
-           	<script>includeWebjarLibrary("qtip2");</script>
        		<script src="/messageforums-tool/js/sak-10625.js"></script>
        		<script src="/messageforums-tool/js/messages.js"></script>
 			<script>
@@ -28,21 +27,9 @@
 					menuLinkSpan.addClass('current');
 					menuLinkSpan.html(menuLink.text());
 					
-					$('#pvtMsgDetail .authorProfile').each(function() {
-						$(this).qtip({ 
-							content: {
-								ajax: {
-									url: $(this).prop('href'),
-									type: 'GET'
-								}
-							},
-							position: {	my: 'left center', at: 'top center'},
-							show: { event: 'click', solo: true, effect: {length:0} },
-							hide: { when:'unfocus', fixed:true, delay: 300,  effect: {length:0} },
-							style: { classes: 'msgcntr-profile-qtip' }
-						});
-						$(this).prop('href', 'javascript:;');
-					});
+					<f:verbatim rendered="#{PrivateMessagesTool.canUseTags}">
+						initTagSelector("pvtMsgDetail");
+					</f:verbatim>
 				});
 			</script>
 			<%@ include file="/jsp/privateMsg/pvtMenu.jsp" %>
@@ -135,10 +122,7 @@
                     <%-- author image --%>
                     <f:subview id="authorImage" rendered="#{PrivateMessagesTool.showProfileInfoMsg}">
                         <h:panelGroup styleClass="authorImage">
-                            <h:outputLink value="#{PrivateMessagesTool.serverUrl}/direct/portal/#{PrivateMessagesTool.detailMsg.msg.authorId}/formatted" styleClass="authorProfile" rendered="#{PrivateMessagesTool.showProfileLink}">
-                                <h:graphicImage value="#{PrivateMessagesTool.serverUrl}/direct/profile/#{PrivateMessagesTool.detailMsg.msg.authorId}/image/thumb" alt="#{message.message.author}" />
-                            </h:outputLink>
-                            <h:graphicImage value="#{PrivateMessagesTool.serverUrl}/direct/profile/#{PrivateMessagesTool.detailMsg.msg.authorId}/image/thumb" alt="#{message.message.author}" rendered="#{!PrivateMessagesTool.showProfileLink}"/>
+                            <sakai-user-photo profile-popup="on" user-id="<h:outputText value="#{PrivateMessagesTool.detailMsg.msg.authorId}"/>" />
                         </h:panelGroup>
                     </f:subview>
                 </div>
@@ -233,6 +217,28 @@
                 </div>
             </div>
         </div>
+
+        <h:panelGroup rendered="#{PrivateMessagesTool.canUseTags}">
+          <h4><h:outputText value="#{msgs.pvt_tags_header}" /></h4>
+          <h:inputHidden value="#{PrivateMessagesTool.selectedTags}" id="tag_selector"></h:inputHidden>
+          <h:panelGroup styleClass="#{PrivateMessagesTool.detailMsg.isPreview || PrivateMessagesTool.detailMsg.isPreviewReply || PrivateMessagesTool.detailMsg.isPreviewReplyAll || PrivateMessagesTool.detailMsg.isPreviewForward ? 'DisableTags' : ''}">
+            <sakai-tag-selector
+              id="tag-selector"
+              <h:panelGroup rendered="#{PrivateMessagesTool.detailMsg.isPreview || PrivateMessagesTool.detailMsg.isPreviewReply || PrivateMessagesTool.detailMsg.isPreviewReplyAll || PrivateMessagesTool.detailMsg.isPreviewForward}">
+                tabindex="-1" 
+              </h:panelGroup>
+              selected-temp='<h:outputText value="#{PrivateMessagesTool.selectedTags}"/>'
+              collection-id='<h:outputText value="#{PrivateMessagesTool.getUserId()}"/>'
+              item-id='<h:outputText value="#{PrivateMessagesTool.detailMsg.msg.id}"/>'
+              site-id='<h:outputText value="#{PrivateMessagesTool.getSiteId()}"/>'
+              tool='<h:outputText value="#{PrivateMessagesTool.getTagTool()}"/>'
+              add-new="true"
+            ></sakai-tag-selector>
+          </h:panelGroup>
+          <h:panelGroup rendered="#{!PrivateMessagesTool.detailMsg.isPreview && !PrivateMessagesTool.detailMsg.isPreviewReply && !PrivateMessagesTool.detailMsg.isPreviewReplyAll && !PrivateMessagesTool.detailMsg.isPreviewForward}">
+            <h:commandButton action="#{PrivateMessagesTool.processPvtMsgSaveTags}" value="#{msgs.pvt_tags_save}"  />
+          </h:panelGroup>
+        </h:panelGroup>
 
 		<hr class="itemSeparator" />
 		

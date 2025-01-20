@@ -1,6 +1,4 @@
-import { loadProperties } from "/webcomponents/sakai-i18n.js";
-import "/webcomponents/assets/imagesloaded/imagesloaded.pkgd.min.js";
-import loadCardGame from "/sakai-roster2-tool/js/card-game/index.js";
+import loadCardGame from "./card-game/index.js";
 
 roster.members = [];
 roster.helpers = {};
@@ -40,11 +38,6 @@ roster.setupPrintButton = function () {
 
       },
     });
-  });
-
-  // Exit "printMode" after print is done
-  window.addEventListener('afterprint', event => {
-    roster.renderMembership({ renderAll: true, printMode: false });
   });
 };
 
@@ -254,7 +247,7 @@ roster.switchState = function (state, args) {
 
       $('#roster-enrollmentset-selector').change(function (e) {
 
-        var option = this.options[this.selectedIndex];
+        const option = this.options[this.selectedIndex];
         roster.enrollmentSetToView = option.value;
         roster.enrollmentSetToViewText = option.text;
         roster.renderMembership({ replace: true });
@@ -266,7 +259,7 @@ roster.switchState = function (state, args) {
         if (roster.enrollmentStatus === '') roster.enrollmentStatus = 'all';
         roster.renderMembership({ replace: true });
       });
-      roster.renderMembership({ replace: true });
+
     });
   } else if (roster.STATE_PERMISSIONS === state) {
     roster.render('permissions', { siteTitle: roster.site.title }, 'roster_content');
@@ -335,9 +328,7 @@ roster.renderMembership = function (options) {
           anyStudentNumberPresent: roster.members.findIndex(m => m.studentNumber) > -1,
           viewProfile: roster.currentUserPermissions.viewProfile,
           viewGroup : roster.currentUserPermissions.viewGroup,
-          viewPicture: true,
           viewSiteVisits: roster.currentUserPermissions.viewSiteVisits,
-          viewConnections: ((undefined !== window.friendStatus) && roster.viewConnections),
           enrollmentsMode: enrollmentsMode,
           showVisits: roster.showVisits,
           }, 'roster-members-content');
@@ -385,35 +376,31 @@ roster.renderMembership = function (options) {
     url += '&enrollmentStatus=' + roster.enrollmentStatus;
   }
 
-  // Calculate dynamic page sizes if not already set
-  if (roster.cardsPageSize === undefined || roster.gridPageSize === undefined) {
-    roster.calculatePageSizes();
-  }
-
   if (roster.currentLayout === "cards") {
-    roster.pageSize = roster.cardsPageSize;
+    roster.pageSize = 10;
   } else if ($('#roster_content').hasClass('view_mode_photogrid')) {
-    roster.pageSize = roster.gridPageSize;
+    roster.pageSize = 10;
   } else {
     roster.pageSize = 50;
   }
 
   url += '&pageSize=' + roster.pageSize;
 
-  var loadImage = $('#roster-loading-image')
+  const loadImage = $('#roster-loading-image')
   loadImage.show();
 
   $.ajax({
     url: url,
     dataType: "json",
     cache: false,
+    async: false,
     success: function (data) {
 
       if (data.status && data.status === 'END') {
         loadImage.hide();
 
         if (roster.nextPage === 0) {
-          var membersTotalString = roster.i18n.currently_displaying_participants.replace(/\{0\}/, 0);
+          const membersTotalString = roster.i18n.currently_displaying_participants.replace(/\{0\}/, 0);
           $('#roster-members-total').html(membersTotalString);
           $('#roster-role-totals').html('');
         }
@@ -421,10 +408,10 @@ roster.renderMembership = function (options) {
         return;
       }
 
-      var members = data.members;
+      const members = data.members;
 
       if (roster.nextPage === 0) {
-        var membersTotalString = roster.i18n.currently_displaying_participants.replace(/\{0\}/, data.membersTotal);
+        const membersTotalString = roster.i18n.currently_displaying_participants.replace(/\{0\}/, data.membersTotal);
         $('#roster-members-total').html(membersTotalString);
         var roleFragments = roster.getRoleFragments(data.roleCounts);
         $('#roster-role-totals').html(roleFragments);
@@ -435,19 +422,15 @@ roster.renderMembership = function (options) {
         m.siteId = roster.siteId;
         m.official = roster.officialPictureMode;
 
-        var groupIds = Object.keys(m.groups);
+        const groupIds = Object.keys(m.groups);
         m.hasGroups = groupIds.length > 0;
         m.groups = groupIds.reduce((acc, id) => { acc.push({id: id, title: m.groups[id]}); return acc; }, []);
         m.groups.sort(function (a, b) {
           return a.title.localeCompare(b.title);
         });
 
-        if (roster.showVisits) {
-          if (m.totalSiteVisits > 0) {
-            m.formattedLastVisitTime = roster.formatDate(m.lastVisitTime);
-          } else {
-            m.formattedLastVisitTime = roster.i18n.no_visits_yet;
-          }
+        if (m.totalSiteVisits <= 0) {
+          m.lastVisitTime = roster.i18n.no_visits_yet;
         }
 
         m.hasProperties = m.userProperties && Object.keys(m.userProperties).length > 0;
@@ -478,7 +461,7 @@ roster.renderMembership = function (options) {
 
         $('.roster-group-link').click(function (e) {
 
-          var value = $(this).attr('data-groupid');
+          const value = $(this).attr('data-groupid');
 
           if (roster.currentState === roster.STATE_ENROLLMENT_STATUS) {
             roster.switchState(roster.STATE_OVERVIEW, {group: value});
@@ -489,7 +472,7 @@ roster.renderMembership = function (options) {
         });
 
         $('.roster-groups-selector').off('change').on('change', function(e) {
-          var value = this.value;
+          const value = this.value;
 
           if (roster.currentState === roster.STATE_ENROLLMENT_STATUS) {
             roster.switchState(roster.STATE_OVERVIEW, {group: value});
@@ -519,7 +502,7 @@ roster.renderMembership = function (options) {
       if(jqXHR.status === 404){
         loadImage.hide();
         if (roster.nextPage === 0) {
-          var membersTotalString = roster.i18n.currently_displaying_participants.replace(/\{0\}/, 0);
+          const membersTotalString = roster.i18n.currently_displaying_participants.replace(/\{0\}/, 0);
           $('#roster-members-total').html(membersTotalString);
           $('#roster-role-totals').html('');
         }
@@ -544,7 +527,7 @@ roster.readyClearButton = function (state) {
 roster.search = function (query) {
 
   if (query !== roster.i18n.roster_search_text && query !== "") {
-    var userIds = [];
+    let userIds = [];
     var i = 0;
     roster.searchIndexValues.forEach(function (displayName) {
 
@@ -579,7 +562,7 @@ roster.readySearchButton = function () {
 
     button.prop("disabled", false).off('click').on('click', function (e) {
 
-      var searchFieldValue = $('#roster-search-field').val();
+      const searchFieldValue = $('#roster-search-field').val();
       roster.search(searchFieldValue);
     });
   });
@@ -587,7 +570,7 @@ roster.readySearchButton = function () {
 
 roster.readySearchField = function () {
 
-  var field = $('#roster-search-field');
+  const field = $('#roster-search-field');
   field.prop("disabled", true);
 
   this.searchIndexPromise.then(() => {
@@ -630,12 +613,10 @@ roster.renderMembers = function (members, target, enrollmentsMode, options) {
       anyStudentNumberPresent: roster.members.findIndex(m => m.studentNumber) > -1,
       viewProfile: roster.currentUserPermissions.viewProfile,
       viewGroup : roster.currentUserPermissions.viewGroup,
-      viewPicture: true,
       currentUserId: roster.userId,
       viewOfficialPhoto: roster.currentUserPermissions.viewOfficialPhoto,
       enrollmentsMode: enrollmentsMode,
       viewSiteVisits: roster.currentUserPermissions.viewSiteVisits,
-      viewConnections: ((undefined !== window.friendStatus) && roster.viewConnections),
       showVisits: roster.showVisits,
       profileNamePronunciationLink: roster.profileNamePronunciationLink,
       printMode: options && options.printMode,
@@ -643,9 +624,6 @@ roster.renderMembers = function (members, target, enrollmentsMode, options) {
 
   let t = null;
   switch (roster.currentLayout) {
-    case "cards":
-      t = Handlebars.templates['members_cards'];
-      break;
     case "spreadsheet":
       t = Handlebars.templates['members_table'];
       break;
@@ -671,16 +649,6 @@ roster.getRoleFragments = function (roleCounts) {
     var frag = roster.i18n.role_breakdown_fragment.replace(/\{0\}/, roleCounts[key]);
     return frag.replace(/\{1\}/, '<span class="role">' + key + '</span>');
   }).join(", ");
-};
-
-roster.formatDate = function (time) {
-
-  var d = new Date(time);
-  var hours = d.getHours();
-  if (hours < 10)  hours = '0' + hours;
-  var minutes = d.getMinutes();
-  if (minutes < 10) minutes = '0' + minutes;
-  return d.getDate() + " " + roster.i18n.months[d.getMonth()] + " " + d.getFullYear() + " @ " + hours + ":" + minutes;
 };
 
 roster.addExportHandler = function () {
@@ -787,38 +755,6 @@ roster.clickViewPhotogridRadio = function() {
   roster.renderMembership({ replace: true });
 };
 
-roster.calculatePageSizes = function () {
-
-  // width of card = width + left and right margin
-  // height of card = height + top and bottom margin
-  var bigCardWidth = 345; // 340px width + 5px margin-right
-  var bigCardHeight = 133; // 128px width + 5px margin-bottom
-  var smallCardWidth = 160; // 155px width + 5px margin-right
-  var smallCardHeight = 177; // 172px width + 5px margin-bottom
-
-  // width of container = width + left and right padding
-  var containerWidth = parseInt($('#roster-members-content').width());
-
-  if (containerWidth < bigCardWidth) {
-    containerWidth = bigCardWidth;
-  }
-
-  // number of cards per row = containerWidth / cardWith, rounded down to nearest whole number
-  var numBigCardsPerRow = Math.floor(containerWidth / bigCardWidth);
-  var numSmallCardsPerRow = Math.floor(containerWidth / smallCardWidth);
-
-  // height of container = height + top and bottom padding;
-  // #roster-members-content has no height at load, so we approximate using the morpheus page container
-  var containerHeight = parseInt($('div.Mrphs-pagebody').height());
-
-  // number of rows per page = containerHeight / cardHeight, rounded down up nearest whole number
-  var numBigRowsPerPage = Math.ceil(containerHeight / bigCardHeight);
-  var numSmallRowsPerPage = Math.ceil(containerHeight / smallCardHeight);
-
-  roster.cardsPageSize = numBigRowsPerPage * numBigCardsPerRow;
-  roster.gridPageSize = numSmallRowsPerPage * numSmallCardsPerRow;
-};
-
 // Functions and attributes added. All the code from hereon is executed
 // after load.
 
@@ -883,20 +819,17 @@ roster.init = function () {
   roster.nextPage = 0;
   roster.currentState = null;
 
-  this.searchIndexPromise = new Promise((resolve, reject) => {
+  this.searchIndexPromise = $.ajax({
+    url: '/direct/roster-membership/' + roster.siteId + '/get-search-index.json',
+    dataType: "json",
+    async: false,
+    success: function (data) {
 
-    $.ajax({
-      url: '/direct/roster-membership/' + roster.siteId + '/get-search-index.json',
-      dataType: "json",
-      success: function (data) {
-
-        roster.searchIndex = data.data;
-        roster.searchIndexKeys = Object.keys(data.data);
-        roster.searchIndexValues = roster.searchIndexKeys.map(function (k) { return data.data[k] });
-        resolve();
-      },
-      error: () => reject()
-    });
+      roster.searchIndex = data.data;
+      roster.searchIndexKeys = Object.keys(data.data);
+      roster.searchIndexValues = roster.searchIndexKeys.map(function (k) { return data.data[k] });
+    },
+    error: () => console.error("failure retrieving search index data")
   });
 
   roster.switchState(roster.state, roster);
@@ -940,7 +873,7 @@ roster.loadSiteDataAndInit = function () {
       // Setup the current user's permissions
       if (roster.userId === roster.ADMIN) {
         // Admin user. Give the full set.
-        var data = ['roster.export',
+        const data = ['roster.export',
               'roster.viewallmembers',
               'roster.viewenrollmentstatus',
               'roster.viewgroup',
@@ -976,7 +909,7 @@ roster.loadSiteDataAndInit = function () {
 
 roster.RosterPermissions = function (permissions) {
 
-  var self = this;
+  const self = this;
 
   permissions.forEach(function (p) {
 
@@ -1030,5 +963,4 @@ var loadRoster = function () {
 };
 
 export {loadRoster};
-
 // # vim: softtabstop=2 sw=2 expandtab

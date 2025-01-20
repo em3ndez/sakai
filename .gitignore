@@ -2,7 +2,9 @@
 .project
 .classpath
 .settings
+*.ipr
 *.iml
+*.iws
 *.swp
 *.orig
 *.rej
@@ -29,3 +31,7 @@ library/src/morpheus-master/
 library/src/webapp/skin/morpheus-default/
 *.key
 *.key.pub
+**/src/main/frontend/node/
+scormplayer/scorm-tool/contentPackages
+.vscode/
+.java-version

@@ -34,6 +34,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 import org.apache.commons.lang3.BooleanUtils;
@@ -44,6 +45,7 @@ import org.sakaiproject.tool.assessment.data.dao.shared.TypeD;
 import org.sakaiproject.tool.assessment.data.ifc.assessment.AnswerIfc;
 import org.sakaiproject.tool.assessment.data.ifc.assessment.ItemAttachmentIfc;
 import org.sakaiproject.tool.assessment.data.ifc.assessment.ItemDataIfc;
+import org.sakaiproject.tool.assessment.data.ifc.assessment.ItemHistoricalIfc;
 import org.sakaiproject.tool.assessment.data.ifc.assessment.ItemMetaDataIfc;
 import org.sakaiproject.tool.assessment.data.ifc.assessment.ItemTagIfc;
 import org.sakaiproject.tool.assessment.data.ifc.assessment.ItemTextIfc;
@@ -79,6 +81,7 @@ public class PublishedItemData
   private String lastModifiedBy;
   private Date lastModifiedDate;
   @Getter private Boolean isExtraCredit = Boolean.FALSE;
+  @Getter @Setter private Boolean isFixed = Boolean.FALSE;
   private Set itemTextSet;
   private Set itemMetaDataSet;
   private Set itemFeedbackSet;
@@ -101,7 +104,9 @@ public class PublishedItemData
   private Integer answerOptionsSimpleOrRich;
 
   private String tagListToJsonString;
-  
+
+  @Getter @Setter private Integer cancellation = ItemDataIfc.ITEM_NOT_CANCELED;
+
   public PublishedItemData() {}
 
   // this constructor should be deprecated, it is missing triesAllowed
@@ -766,9 +771,9 @@ public class PublishedItemData
 							answerKey = a.getText();
 						} else if (TypeD.CALCULATED_QUESTION.equals(this.getTypeId())) {
 							if (StringUtils.isEmpty(answerKey)) {
-								answerKey = a.getLabel() +" = "+ a.getText().substring(0, a.getText().indexOf("|")) ;
+								answerKey = a.getLabel() +" = "+ a.getText().substring(0, a.getText().lastIndexOf("|")) ;
 							} else {
-								answerKey += "," + a.getLabel() +" = "+ a.getText().substring(0, a.getText().indexOf("|")) ;
+								answerKey += ":split:" + a.getLabel() +" = "+ a.getText().substring(0, a.getText().lastIndexOf("|")) ;
 							}
 						} else {
 							if (("").equals(answerKey)) {
@@ -924,7 +929,6 @@ public class PublishedItemData
   public void setPartialCreditFlag(Boolean partialCreditFlag) {
 	  this.partialCreditFlag = partialCreditFlag;
   }
-  
 
   public String getLeadInText() {
 	if (leadInText == null) {
@@ -1186,4 +1190,18 @@ public class PublishedItemData
   public String getTagListToJsonString() {
     return convertTagListToJsonString(itemTagSet);
   }
+
+  public Set<ItemHistoricalIfc> getItemHistoricalSet() {
+    // Do nothing
+    return new HashSet<>();
+  }
+
+  public void setItemHistoricalSet(Set<ItemHistoricalIfc> itemMetaDataSet) {
+    // Do nothing
+  }
+
+  public void addItemHistorical(String modifiedBy, Date modifiedDate) {
+    // Do nothing
+  }
+
 }

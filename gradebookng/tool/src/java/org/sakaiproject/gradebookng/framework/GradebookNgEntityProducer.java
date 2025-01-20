@@ -17,30 +17,27 @@ package org.sakaiproject.gradebookng.framework;
 
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.Stack;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
 
-import org.sakaiproject.entity.api.Entity;
 import org.sakaiproject.entity.api.EntityManager;
 import org.sakaiproject.entity.api.EntityProducer;
 import org.sakaiproject.entity.api.EntityTransferrer;
-import org.sakaiproject.entity.api.HttpAccess;
 import org.sakaiproject.entity.api.Reference;
-import org.sakaiproject.entity.api.ResourceProperties;
 import org.sakaiproject.exception.IdUnusedException;
+import org.sakaiproject.grading.api.GradingConstants;
 import org.sakaiproject.grading.api.model.Gradebook;
 import org.sakaiproject.grading.api.GradingService;
 import org.sakaiproject.grading.api.Assignment;
 import org.sakaiproject.grading.api.CategoryDefinition;
 import org.sakaiproject.grading.api.GradebookInformation;
 import org.sakaiproject.grading.api.GradeMappingDefinition;
-import org.sakaiproject.grading.api.GradingCategoryType;
 import org.sakaiproject.gradebookng.business.GradebookNgBusinessService;
 import org.sakaiproject.site.api.Site;
 import org.sakaiproject.site.api.SiteService;
@@ -176,11 +173,11 @@ public class GradebookNgEntityProducer implements EntityProducer, EntityTransfer
 
 		Element categoryTypeEl = doc.createElement("CategoryType");
 		String categoryCode = null;
-		if (settings.getCategoryType() == GradingCategoryType.NO_CATEGORY) {
+		if (Objects.equals(settings.getCategoryType(), GradingConstants.CATEGORY_TYPE_NO_CATEGORY)) {
 			categoryCode = "NO_CATEGORIES";
-		} else if (settings.getCategoryType() == GradingCategoryType.ONLY_CATEGORY) {
+		} else if (Objects.equals(settings.getCategoryType(), GradingConstants.CATEGORY_TYPE_ONLY_CATEGORY)) {
 			categoryCode = "CATEGORIES_APPLIED";
-		} else if (settings.getCategoryType() == GradingCategoryType.WEIGHTED_CATEGORY) {
+		} else if (Objects.equals(settings.getCategoryType(), GradingConstants.CATEGORY_TYPE_WEIGHTED_CATEGORY)) {
 			categoryCode = "WEIGHTED_CATEGORIES_APPLIED";
 		} else {
 			categoryCode = "UNKNOWN";
@@ -189,31 +186,26 @@ public class GradebookNgEntityProducer implements EntityProducer, EntityTransfer
 		gradebookConfigEl.appendChild(categoryTypeEl);
 
 		Element gradeTypeEl = doc.createElement("GradeType");
-		String gradeTypeCode = null;
-		switch(settings.getGradeType()) {
-			case POINTS:
-				gradeTypeCode = "POINTS";
-				break;
-			case PERCENTAGE:
-				gradeTypeCode = "PERCENTAGE";
-				break;
-			case LETTER:
-				gradeTypeCode = "LETTER";
-				break;
-			default:
-				gradeTypeCode = "UNKNOWN";
-		}
+		String gradeTypeCode;
+        if (Objects.equals(settings.getGradeType(), GradingConstants.GRADE_TYPE_PERCENTAGE)) {
+            gradeTypeCode = "PERCENTAGE";
+        } else if (Objects.equals(settings.getGradeType(), GradingConstants.GRADE_TYPE_LETTER)) {
+            gradeTypeCode = "LETTER";
+        } else {
+            gradeTypeCode = "POINTS";
+        }
+
 		gradeTypeEl.setTextContent(gradeTypeCode);
 		gradebookConfigEl.appendChild(gradeTypeEl);
 
-		if (settings.getCategoryType() != GradingCategoryType.NO_CATEGORY) {
+		if (!Objects.equals(settings.getCategoryType(), GradingConstants.CATEGORY_TYPE_NO_CATEGORY)) {
 			Element categoriesEl = doc.createElement("categories");
 			for (CategoryDefinition category : settings.getCategories()) {
 				Element categoryEl = doc.createElement("category");
 				categoryEl.setAttribute("id", String.valueOf(category.getId()));
 				categoryEl.setAttribute("name", category.getName());
 				categoryEl.setAttribute("extraCredit", String.valueOf(category.getExtraCredit()));
-				if (settings.getCategoryType() == GradingCategoryType.WEIGHTED_CATEGORY) {
+				if (Objects.equals(settings.getCategoryType(), GradingConstants.CATEGORY_TYPE_WEIGHTED_CATEGORY)) {
 					categoryEl.setAttribute("weight", String.valueOf(category.getWeight()));
 				} else {
 					categoryEl.setAttribute("weight", "");
@@ -277,43 +269,15 @@ public class GradebookNgEntityProducer implements EntityProducer, EntityTransfer
 	}
 
 	@Override
-	public boolean parseEntityReference(final String reference, final Reference ref) {
-		return false;
-	}
-
-	@Override
-	public String getEntityDescription(final Reference ref) {
-		return null;
-	}
-
-	@Override
-	public ResourceProperties getEntityResourceProperties(final Reference ref) {
-		return null;
-	}
-
-	@Override
-	public Entity getEntity(final Reference ref) {
-		return null;
-	}
-
-	@Override
-	public String getEntityUrl(final Reference ref) {
-		return null;
-	}
-
-	@Override
-	public Collection<String> getEntityAuthzGroups(final Reference ref, final String userId) {
-		return null;
-	}
-
-	@Override
-	public HttpAccess getHttpAccess() {
-		return null;
-	}
-
-	@Override
 	public String[] myToolIds() {
 		return TOOL_IDS;
+	}
+
+	@Override
+	public List<Map<String, String>> getEntityMap(String fromContext) {
+
+		return this.gradingService.getAssignments(fromContext).stream()
+			.map(ass -> Map.of("id", ass.getId().toString(), "title", ass.getName())).collect(Collectors.toList());
 	}
 
 	@Override
@@ -346,10 +310,5 @@ public class GradebookNgEntityProducer implements EntityProducer, EntityTransfer
 
 		// now migrate
 		return this.transferCopyEntities(fromContext, toContext, ids, null);
-	}
-
-	@Override
-	public void updateEntityReferences(String toContext, Map<String, String> transversalMap) {
-		//not necessary
 	}
 }

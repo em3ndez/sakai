@@ -43,12 +43,15 @@ import org.sakaiproject.rubrics.api.beans.CriterionTransferBean;
 import org.sakaiproject.rubrics.api.beans.EvaluationTransferBean;
 import org.sakaiproject.rubrics.api.beans.RatingTransferBean;
 import org.sakaiproject.rubrics.api.beans.RubricTransferBean;
+import org.sakaiproject.rubrics.api.model.Criterion;
 import org.sakaiproject.rubrics.api.model.EvaluatedItemOwnerType;
 import org.sakaiproject.rubrics.api.model.Evaluation;
 import org.sakaiproject.rubrics.api.model.EvaluationStatus;
 import org.sakaiproject.rubrics.api.model.ReturnedEvaluation;
+import org.sakaiproject.rubrics.api.model.Rubric;
 import org.sakaiproject.rubrics.api.model.ToolItemRubricAssociation;
 import org.sakaiproject.rubrics.api.repository.AssociationRepository;
+import org.sakaiproject.rubrics.api.repository.CriterionRepository;
 import org.sakaiproject.rubrics.api.repository.EvaluationRepository;
 import org.sakaiproject.rubrics.api.repository.ReturnedEvaluationRepository;
 import org.sakaiproject.rubrics.impl.RubricsServiceImpl;
@@ -75,6 +78,7 @@ import lombok.extern.slf4j.Slf4j;
 public class RubricsServiceTests extends AbstractTransactionalJUnit4SpringContextTests {
 
     @Autowired private AssociationRepository associationRepository;
+    @Autowired private CriterionRepository criterionRepository;
     @Autowired private EvaluationRepository evaluationRepository;
     @Autowired private ReturnedEvaluationRepository returnedEvaluationRepository;
     @Autowired private RubricsService rubricsService;
@@ -289,7 +293,6 @@ public class RubricsServiceTests extends AbstractTransactionalJUnit4SpringContex
         String toolId = "sakai.assignment";
         String toolItem1 = "item1";
         Map<String, String> rbcsParams = new HashMap<>();
-        rbcsParams.put(RubricsConstants.RBCS_ASSOCIATE, "1");
         rbcsParams.put(RubricsConstants.RBCS_LIST, rubricBean.getId().toString());
         Optional<ToolItemRubricAssociation> optAssociation1
             = rubricsService.saveRubricAssociation(toolId, toolItem1, rbcsParams);
@@ -313,15 +316,27 @@ public class RubricsServiceTests extends AbstractTransactionalJUnit4SpringContex
         List<Evaluation> evaluations = evaluationRepository.findAll();
         assertEquals(2, evaluations.size());
 
-        rubricsService.deleteRubric(rubricBean.getId());
+        // This should fail as we have evaluations
+        boolean deletedOk = rubricsService.deleteRubric(rubricBean.getId());
+
+        assertFalse(deletedOk);
+
+        associations = associationRepository.findAll();
+        assertEquals(2, associations.size());
+
+        evaluationRepository.findAll().forEach(ev -> evaluationRepository.delete(ev));
+
+        deletedOk = rubricsService.deleteRubric(rubricBean.getId());
+
+        assertTrue(deletedOk);
+
+        assertFalse(rubricsService.getRubric(rubricBean.getId()).isPresent());
+
+        List<Criterion> criteria = criterionRepository.findAll();
+        assertEquals(0, criteria.size());
 
         associations = associationRepository.findAll();
         assertEquals(0, associations.size());
-
-        evaluations = evaluationRepository.findAll();
-        assertEquals(0, evaluations.size());
-
-        assertFalse(rubricsService.getRubric(rubricBean.getId()).isPresent());
     }
 
     @Test
@@ -527,12 +542,11 @@ public class RubricsServiceTests extends AbstractTransactionalJUnit4SpringContex
         String toolId = "sakai.assignment";
         String toolItemId = "item1";
 
-        Map<String, String> rbcsParams = new HashMap<>();
-        rbcsParams.put(RubricsConstants.RBCS_ASSOCIATE, "1");
-
         RubricTransferBean rubricBean = rubricsService.createDefaultRubric(siteId);
 
-        rbcsParams.put(RubricsConstants.RBCS_LIST, rubricBean.getId().toString());
+        Map<String, String> rbcsParams = Map.of(RubricsConstants.RBCS_ASSOCIATE, "1",
+                                                RubricsConstants.RBCS_LIST, rubricBean.getId().toString());
+
         Optional<ToolItemRubricAssociation> association = rubricsService.saveRubricAssociation(toolId, toolItemId, rbcsParams);
         assertTrue(association.isPresent());
         assertEquals(rubricBean.getId(), association.get().getRubric().getId());
@@ -562,6 +576,29 @@ public class RubricsServiceTests extends AbstractTransactionalJUnit4SpringContex
     }
 
     @Test
+    public void deleteRubricAssociation() {
+
+        switchToInstructor();
+
+        String toolId = "sakai.assignment";
+        String toolItemId = "item1";
+
+        RubricTransferBean rubricBean = rubricsService.createDefaultRubric(siteId);
+
+        Map<String, String> rbcsParams = Map.of(RubricsConstants.RBCS_ASSOCIATE, "1",
+                                                    RubricsConstants.RBCS_LIST, rubricBean.getId().toString());
+
+        Optional<ToolItemRubricAssociation> optAssociation = rubricsService.saveRubricAssociation(toolId, toolItemId, rbcsParams);
+        assertTrue(optAssociation.isPresent());
+
+        assertTrue(rubricsService.getRubricAssociation(toolId, toolItemId).isPresent());
+
+        rubricsService.deleteRubricAssociation(toolId, toolItemId);
+
+        assertFalse(rubricsService.getRubricAssociation(toolId, toolItemId).isPresent());
+    }
+
+    @Test
     public void saveEvaluation() {
 
         switchToInstructor();
@@ -576,22 +613,20 @@ public class RubricsServiceTests extends AbstractTransactionalJUnit4SpringContex
         Map<String, String> rbcsParams = new HashMap<>();
         rbcsParams.put(RubricsConstants.RBCS_ASSOCIATE, "1");
         rbcsParams.put(RubricsConstants.RBCS_LIST, rubricBean.getId().toString());
-        ToolItemRubricAssociation association
-            = rubricsService.saveRubricAssociation(toolId, toolItemId, rbcsParams).get();
+        ToolItemRubricAssociation association = rubricsService.saveRubricAssociation(toolId, toolItemId, rbcsParams).get();
+
+        rubricsService.getRubric(rubricBean.getId()).ifPresent(r -> assertFalse(r.getLocked()));
 
         EvaluationTransferBean etb = buildEvaluation(association.getId(), rubricBean, toolItemId);
         assertEquals(association.getId(), etb.getAssociationId());
 
         etb.setStatus(EvaluationStatus.DRAFT);
         etb.setOverallComment(originalComment);
-        etb.setNew(true);
 
         etb = rubricsService.saveEvaluation(etb, siteId);
         assertEquals(EvaluationStatus.DRAFT, etb.getStatus());
-        Optional<ReturnedEvaluation> returnedEvaluation
-            = returnedEvaluationRepository.findByOriginalEvaluationId(etb.getId());
+        Optional<ReturnedEvaluation> returnedEvaluation = returnedEvaluationRepository.findByOriginalEvaluationId(etb.getId());
         assertFalse(returnedEvaluation.isPresent());
-        rubricBean = rubricsService.createDefaultRubric(siteId);
 
         switchToUser1();
         Optional<EvaluationTransferBean> optEtb = rubricsService.getEvaluation(etb.getId(), siteId);
@@ -600,6 +635,7 @@ public class RubricsServiceTests extends AbstractTransactionalJUnit4SpringContex
         switchToInstructor();
         optEtb = rubricsService.getEvaluation(etb.getId(), siteId);
         assertTrue(optEtb.isPresent());
+        rubricsService.getRubric(rubricBean.getId()).ifPresent(r -> assertTrue(r.getLocked()));
         assertNotNull(optEtb.get().getCreatorId());
         assertNotNull(optEtb.get().getCreated());
         assertEquals(association.getId(), optEtb.get().getAssociationId());
@@ -674,7 +710,6 @@ public class RubricsServiceTests extends AbstractTransactionalJUnit4SpringContex
 
         etb.setStatus(EvaluationStatus.DRAFT);
         etb.setOverallComment(originalComment);
-        etb.setNew(true);
 
         etb = rubricsService.saveEvaluation(etb, siteId);
         assertEquals(EvaluationStatus.DRAFT, etb.getStatus());

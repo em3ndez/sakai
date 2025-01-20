@@ -1,4 +1,5 @@
 /* Dark Theme */
+@import "../defaults";
 
 :root.sakaiUserTheme-dark {
     /////////////////////////////////////////////////////////////
@@ -132,7 +133,12 @@
 
     // Primary border color used across sakai. 
     // Suggested: light gray
-    --sakai-border-color: var(--sakai-greyblue--darker-4);
+    --sakai-border-color: var(--sakai-color-gray--darker-4);
+
+    // Primary border color used across sakai for things like modals that pop up
+    // and need to be distinct from the background color.
+    // Suggested: darkish grey
+    --sakai-border-color-modal: var(--sakai-color-gray--lighter-6);
 
     // Primary text color used across sakai. 
     // Suggested: light grey
@@ -249,11 +255,41 @@
       --bs-btn-color: white;
     }
 
+    input {
+      color-scheme: dark;
+    }
+
+    input.form-control, textarea.form-control, select.form-control {
+      background-color: var(--sakai-background-color-2);
+      color: var(--sakai-text-color-1);
+    
+      &:focus,
+      &:active,
+      &:-webkit-autofill {
+        background-color: var(--sakai-background-color-3);
+        color: var(--sakai-text-color-2);
+      }
+    }
+    
+    input.form-control:-webkit-autofill,
+    input.form-control:-webkit-autofill:hover, 
+    input.form-control:-webkit-autofill:focus, 
+    input.form-control:-webkit-autofill:active {
+      transition: background-color 5000s ease-in-out 0s, color 5000s ease-in-out 0s;
+      --webkit-text-fill-color: var(--sakai-text-color-1) !important;
+      background-color: var(--sakai-background-color-2) !important;
+    }
+
+    --select-background-image-url: url(#{$skin-path}/images/icon-arrow-down-dark.png);
+
     .dropdown-menu {
       --bs-dropdown-bg: var(--sakai-background-color-3);
       --bs-dropdown-color: var(--sakai-text-color-1);
       --bs-dropdown-header-color: var(--sakai-text-color-2);
       --bs-dropdown-divider-bg: white;
+    }
+    .dropdown-item {
+      --bs-dropdown-link-color: var(--sakai-text-color-1);
     }
     .card {
       --bs-card-bg: var(--sakai-background-color-3);
@@ -272,10 +308,19 @@
     .list-group {
       --bs-list-group-bg: var(--sakai-background-color-3);
       --bs-list-group-color: var(--sakai-text-color-1);
+      --bs-list-group-action-color: var(--sakai-text-color-2);
     }
 
     .popover {
       --bs-popover-header-bg: var(--sakai-background-color-3);
       --bs-popover-bg: var(--sakai-background-color-2);
+    }
+
+    .paginate_button {
+      --bs-pagination-disabled-bg: var(--sakai-passive-color-1);
+      --bs-pagination-bg: var(--sakai-background-color-2);
+      --bs-pagination-color: var(--link-color);
+      --bs-pagination-hover-color: var(--sakai-text-color-1);
+      --bs-pagination-hover-bg: var(--sakai-active-color-2);
     }
 }
